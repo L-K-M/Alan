@@ -81,6 +81,26 @@ class HighlightView: NSView {
         if strongerShadow {
             NSGraphicsContext.current?.saveGraphicsState()
 
+            // Create a clipping path that excludes the interior of the border
+            // This ensures the shadow only appears outside
+            let outerClipRect = bounds.insetBy(dx: -50, dy: -50)
+            let outerClipPath = NSBezierPath(rect: outerClipRect)
+
+            let innerExcludePath: NSBezierPath
+            let halfWidth = CGFloat(width) / 2.0
+            let innerBounds = borderBounds.insetBy(dx: -halfWidth, dy: -halfWidth)
+            if cornerRadius > 0 {
+                let innerRadius = CGFloat(cornerRadius) + halfWidth
+                innerExcludePath = NSBezierPath(roundedRect: innerBounds, xRadius: innerRadius, yRadius: innerRadius)
+            } else {
+                innerExcludePath = NSBezierPath(rect: innerBounds)
+            }
+
+            // Use even-odd winding to clip out the interior
+            outerClipPath.append(innerExcludePath)
+            outerClipPath.windingRule = .evenOdd
+            outerClipPath.addClip()
+
             let shadow = NSShadow()
             shadow.shadowColor = NSColor.black.withAlphaComponent(0.99)
             shadow.shadowBlurRadius = 25
