@@ -10,6 +10,7 @@ import Cocoa
 struct Defaults {
     static let lightModeColor = NSColor.black
     static let darkModeColor = NSColor.white
+    static let frameDrawingDisableTimeout: TimeInterval = 0.25
 }
 
 struct Key {

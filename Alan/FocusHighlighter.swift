@@ -15,6 +15,8 @@ class FocusHighlighter {
     private let systemWideElement = AXUIElementCreateSystemWide()
     private let highlightWindow = HighlightWindow()
     private var lastFrame: CGRect?
+    private var drawFrame = true
+    private var disableFrameTimer: Timer?
 
     private var axObserver: AXObserver?
     private var observedAppElement: AXUIElement?
@@ -151,7 +153,21 @@ class FocusHighlighter {
 
         if lastFrame != cocoaFrame {
             lastFrame = cocoaFrame
+            temporarilyDisableFrameDrawing()
+        } else if lastFrame == cocoaFrame && drawFrame {
             highlightWindow.updateFrame(to: cocoaFrame)
+        }
+    }
+
+    private func temporarilyDisableFrameDrawing() {
+        drawFrame = false
+        highlightWindow.orderOut(nil)
+        disableFrameTimer?.invalidate()
+        // Nothing re-runs refresh() on its own once the window stops moving
+        // (tracking is event-driven, not polled), so the timer has to do it.
+        disableFrameTimer = Timer.scheduledTimer(withTimeInterval: Defaults.frameDrawingDisableTimeout, repeats: false) { [weak self] _ in
+            self?.drawFrame = true
+            self?.refresh()
         }
     }
 
