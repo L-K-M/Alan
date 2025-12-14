@@ -16,6 +16,8 @@ class FocusHighlighter {
     private let highlightWindow = HighlightWindow()
     private var timer: Timer?
     private var lastFrame: CGRect?
+    private var drawFrame = true
+    private var disableFrameTimer: Timer?
 
     func start() {
         handleFocusChange()
@@ -47,7 +49,18 @@ class FocusHighlighter {
 
         if lastFrame != cocoaFrame {
             lastFrame = cocoaFrame
+            temporarilyDisableFrameDrawing()
+        } else if lastFrame == cocoaFrame && drawFrame {
             highlightWindow.updateFrame(to: cocoaFrame)
+        }
+    }
+
+    private func temporarilyDisableFrameDrawing() {
+        drawFrame = false
+        highlightWindow.orderOut(nil)
+        disableFrameTimer?.invalidate()
+        disableFrameTimer = Timer.scheduledTimer(withTimeInterval: Defaults.frameDrawingDisableTimeout, repeats: false) { [weak self] _ in
+            self?.drawFrame = true
         }
     }
 
