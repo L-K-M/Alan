@@ -17,6 +17,8 @@ struct Key {
     static let width = "width"
     static let inset = "inset"
     static let cornerRadius = "cornerRadius"
+    static let glowingBorder = "glowingBorder"
+    static let strongerShadow = "strongerShadow"
     static let hideDock = "hideDock"
     static let lightMode = "lightMode"
     static let darkMode = "darkMode"
