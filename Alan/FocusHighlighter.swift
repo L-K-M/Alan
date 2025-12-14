@@ -38,6 +38,20 @@ class FocusHighlighter {
     }
     
     private func handleFocusChange() {
+        // Check if the frontmost app is excluded
+        if let frontmostApp = NSWorkspace.shared.frontmostApplication,
+           let bundleIdentifier = frontmostApp.bundleIdentifier {
+
+            let excludedApps = UserDefaults.standard.stringArray(forKey: Key.excludedApps) ?? []
+            if excludedApps.contains(bundleIdentifier) {
+                if highlightWindow.isVisible {
+                    highlightWindow.orderOut(nil)
+                    lastFrame = nil
+                }
+                return
+            }
+        }
+
         guard let axFrame = currentFocusedWindowFrame() else {
             if highlightWindow.isVisible {
                 highlightWindow.orderOut(nil)
