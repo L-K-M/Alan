@@ -8,7 +8,7 @@ than useful utility", which is exactly why it deserves a loving review. Entries 
 
 ## Bugs
 
-### 1. Permission flow opens the wrong System Settings pane ✅ implemented
+### 1. Permission flow opens the wrong System Settings pane ✅ implemented in PR #5
 `AppDelegate.requestAccessibilityPermissionIfNeeded()` opens
 `x-apple.systempreferences:com.apple.preference.universalaccess` — that's the
 **Accessibility features** pane (VoiceOver, Zoom, …), not
@@ -16,7 +16,7 @@ than useful utility", which is exactly why it deserves a loving review. Entries 
 Alan. The alert text says one thing; the deep link goes somewhere else. The correct URL
 is `x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility`.
 
-### 2. `register(defaults:)` is fed raw `NSColor` objects ✅ implemented
+### 2. `register(defaults:)` is fed raw `NSColor` objects ✅ implemented in PR #5
 `UserDefaults.register(defaults:)` only accepts property-list values (strings, numbers,
 data, dates, arrays, dicts). `Key.lightMode`/`Key.darkMode` are registered as `NSColor`
 objects, which is not a plist type — the registration of those two keys is ineffective
@@ -24,14 +24,14 @@ objects, which is not a plist type — the registration of those two keys is ine
 works because every read site has its own `?? Defaults.…Color` fallback. Register
 archived `Data` (or nothing) instead.
 
-### 3. Border color doesn't react to light/dark mode switches ✅ implemented
+### 3. Border color doesn’t react to light/dark mode switches ✅ implemented in PR #5
 `HighlightView.draw` picks the color from `NSAppearance.isLightMode` at draw time, but
 nothing triggers a redraw when the system appearance changes. After switching themes,
 the border keeps the old mode's color until the focused window moves or focus changes.
 AppKit has a purpose-built hook: override `viewDidChangeEffectiveAppearance()` and mark
 the view dirty.
 
-### 4. Deprecated, non-secure color archiving ✅ implemented
+### 4. Deprecated, non-secure color archiving ✅ implemented in PR #5
 `UserDefaults.setColor`/`color(forKey:)` use `NSKeyedArchiver.archivedData(withRootObject:)`
 and `NSKeyedUnarchiver.unarchiveObject(with:)`, both deprecated since macOS 10.13/10.14
 and bypassing secure coding. `NSColor` conforms to `NSSecureCoding`; the modern
@@ -89,7 +89,7 @@ value — nice) or conditional cast would make the poller crash-proof.
    only wired up once the prefs window has loaded.
 4. **`hideDock` takes effect only on relaunch** — there's no observer applying
    `setActivationPolicy` when the checkbox changes.
-5. **Naming nit:** `NSAppearance.isdarkMode` (lowercase d). ✅ implemented (renamed)
+5. **Naming nit:** `NSAppearance.isdarkMode` (lowercase d). ✅ implemented in PR #5 (renamed)
 
 ---
 
