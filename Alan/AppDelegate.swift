@@ -17,12 +17,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
 
+        // The color keys are intentionally not registered here: register(defaults:)
+        // only accepts property-list values, and NSColor is not one. Every reader
+        // falls back to Defaults.lightModeColor/darkModeColor instead.
         UserDefaults.standard.register(defaults: [
             Key.width: 5,
             Key.inset: 4,
-            Key.hideDock: false,
-            Key.lightMode: Defaults.lightModeColor,
-            Key.darkMode: Defaults.darkModeColor
+            Key.hideDock: false
         ])
 
         if UserDefaults.standard.bool(forKey: Key.hideDock) == true {
@@ -42,7 +43,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let trusted = AXIsProcessTrustedWithOptions(options)
 
         guard trusted else {
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess") {
+            // Privacy & Security ▸ Accessibility, where the permission actually lives
+            // (com.apple.preference.universalaccess is the Accessibility *features* pane).
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
                 NSWorkspace.shared.open(url)
             }
 

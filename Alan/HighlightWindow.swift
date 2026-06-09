@@ -39,6 +39,13 @@ class HighlightWindow: NSWindow {
 class HighlightView: NSView {
     override var isFlipped: Bool { true }
 
+    // The stroke color depends on the current appearance, so the border must be
+    // redrawn when the system switches between light and dark mode.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
