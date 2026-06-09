@@ -5,6 +5,8 @@ Bugs, general issues, missing features, and some ideas in the spirit of the
 project. Items marked **[implementing]** are being addressed in a follow-up
 PR; the rest are documented for future consideration.
 
+> Follow-up PR: **#2**.
+
 ---
 
 ## Bugs
