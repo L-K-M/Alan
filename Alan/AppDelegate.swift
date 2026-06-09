@@ -42,7 +42,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let trusted = AXIsProcessTrustedWithOptions(options)
 
         guard trusted else {
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess") {
+            // Deep link to Privacy & Security → Accessibility (where the
+            // permission toggle actually lives), matching the alert text below.
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
                 NSWorkspace.shared.open(url)
             }
 
