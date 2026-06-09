@@ -76,10 +76,10 @@ multiple AX round-trips per tick. The grown-up approach is an `AXObserver`
 per frontmost app subscribed to `kAXFocusedWindowChangedNotification`,
 `kAXWindowMovedNotification`, `kAXWindowResizedNotification` plus
 `NSWorkspace.didActivateApplicationNotification` — event-driven, zero idle
-cost, and the border stops lagging 100 ms behind window drags. A bigger
-refactor than I want to land untested, but it's *the* improvement this app
-wants. (Interim mitigation implemented: a small timer tolerance so the wakeups
-at least coalesce for the power manager.) **[tolerance implemented]**
+cost, and the border stops lagging 100 ms behind window drags.
+**[implemented in PR #7]** — AXObserver on the frontmost app plus a
+drag-scoped 30 Hz timer, since AX doesn't deliver move/resize notifications
+continuously during a live drag, only when the gesture ends.
 
 ### G2. `isdarkMode` naming **[implementing]**
 The `NSAppearance.isdarkMode` property is camelCase-with-a-stumble. Renamed to
