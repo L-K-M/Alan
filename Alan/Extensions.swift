@@ -83,6 +83,7 @@ extension UserDefaults {
 
     func color(forKey key: String) -> NSColor? {
         guard let data = self.data(forKey: key) else { return nil }
+        // Reads archives written by the old non-secure API too.
         return try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: data)
     }
 }
