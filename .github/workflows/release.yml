@@ -1,0 +1,54 @@
+# Builds Alan.app and publishes it as a GitHub Release whenever a version
+# tag is pushed, e.g.:
+#
+#   git tag v1.1 && git push origin v1.1
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish Alan.app
+    # The project's deployment target is macOS 15.7, which needs a newer SDK
+    # than the macos-15 image's default Xcode provides.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (Release, ad-hoc signed)
+        # The tag (minus the leading "v") is stamped into the app's
+        # CFBundleShortVersionString via MARKETING_VERSION. CI has no
+        # certificates for the project's development team, so override
+        # automatic signing with an ad-hoc identity ("-").
+        run: |
+          xcodebuild build \
+            -project Alan.xcodeproj \
+            -scheme Alan \
+            -configuration Release \
+            -derivedDataPath build \
+            MARKETING_VERSION="${GITHUB_REF_NAME#v}" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- \
+            DEVELOPMENT_TEAM=
+
+      - name: Zip the app
+        # ditto preserves symlinks, resource forks, and permissions — the
+        # reliable way to zip a .app bundle.
+        run: ditto -c -k --keepParent build/Build/Products/Release/Alan.app "Alan-${GITHUB_REF_NAME}.zip"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "Alan-${GITHUB_REF_NAME}.zip" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Alan $GITHUB_REF_NAME" \
+            --generate-notes \
+            --notes "The app is ad-hoc signed (no Developer ID), so on first launch right-click the app and choose Open, or run \`xattr -d com.apple.quarantine Alan.app\`."
