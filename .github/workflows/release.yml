@@ -1,7 +1,8 @@
-# Builds Alan.app and publishes it as a GitHub Release whenever a version
-# tag is pushed, e.g.:
+# Builds Alan.app and publishes it as a GitHub Release. Two triggers:
 #
-#   git tag v1.1 && git push origin v1.1
+# - pushing a version tag:        git tag v1.1 && git push origin v1.1
+# - manual dispatch (Actions → Release → Run workflow) with a version
+#   input like "1.1"; the release is tagged v<version> at the built SHA.
 
 name: Release
 
@@ -9,6 +10,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, without the leading v (e.g. 1.1)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -22,18 +29,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Determine version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="v${INPUT_VERSION#v}"
+          else
+            TAG="$GITHUB_REF_NAME"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
       - name: Build (Release, ad-hoc signed)
-        # The tag (minus the leading "v") is stamped into the app's
-        # CFBundleShortVersionString via MARKETING_VERSION. CI has no
-        # certificates for the project's development team, so override
-        # automatic signing with an ad-hoc identity ("-").
+        # The version is stamped into the app's CFBundleShortVersionString
+        # via MARKETING_VERSION. CI has no certificates for the project's
+        # development team, so override automatic signing with an ad-hoc
+        # identity ("-").
         run: |
           xcodebuild build \
             -project Alan.xcodeproj \
             -scheme Alan \
             -configuration Release \
             -derivedDataPath build \
-            MARKETING_VERSION="${GITHUB_REF_NAME#v}" \
+            MARKETING_VERSION="${{ steps.version.outputs.version }}" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY=- \
             DEVELOPMENT_TEAM=
@@ -41,14 +61,18 @@ jobs:
       - name: Zip the app
         # ditto preserves symlinks, resource forks, and permissions — the
         # reliable way to zip a .app bundle.
-        run: ditto -c -k --keepParent build/Build/Products/Release/Alan.app "Alan-${GITHUB_REF_NAME}.zip"
+        run: ditto -c -k --keepParent build/Build/Products/Release/Alan.app "Alan-${{ steps.version.outputs.tag }}.zip"
 
       - name: Create GitHub release
+        # On tag pushes the tag already exists; on manual dispatch
+        # `gh release create` creates it at the commit that was built.
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "Alan-${GITHUB_REF_NAME}.zip" \
+          gh release create "$TAG" "Alan-${TAG}.zip" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Alan $GITHUB_REF_NAME" \
+            --target "$GITHUB_SHA" \
+            --title "Alan $TAG" \
             --generate-notes \
             --notes "The app is ad-hoc signed (no Developer ID), so on first launch right-click the app and choose Open, or run \`xattr -d com.apple.quarantine Alan.app\`."
