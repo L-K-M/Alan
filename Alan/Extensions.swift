@@ -61,7 +61,7 @@ extension NSColor {
 }
 
 extension NSAppearance {
-    static var isdarkMode: Bool {
+    static var isDarkMode: Bool {
         switch NSApp.effectiveAppearance.name {
         case .darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua, .accessibilityHighContrastVibrantDark:
             return true
@@ -71,18 +71,18 @@ extension NSAppearance {
     }
 
     static var isLightMode: Bool {
-        return !isdarkMode
+        return !isDarkMode
     }
 }
 
 extension UserDefaults {
     func setColor(_ color: NSColor, forKey key: String) {
-        let data = NSKeyedArchiver.archivedData(withRootObject: color)
+        guard let data = try? NSKeyedArchiver.archivedData(withRootObject: color, requiringSecureCoding: true) else { return }
         self.set(data, forKey: key)
     }
-    
+
     func color(forKey key: String) -> NSColor? {
         guard let data = self.data(forKey: key) else { return nil }
-        return NSKeyedUnarchiver.unarchiveObject(with: data) as? NSColor
+        return try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: data)
     }
 }
