@@ -16,6 +16,7 @@ class FocusHighlighter {
     private let highlightWindow = HighlightWindow()
     private var timer: Timer?
     private var lastFrame: CGRect?
+    private var appearanceObservation: NSKeyValueObservation?
 
     func start() {
         handleFocusChange()
@@ -23,9 +24,19 @@ class FocusHighlighter {
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             self?.handleFocusChange()
         }
+        // The exact tick timing doesn't matter; let the system coalesce wakeups
+        timer?.tolerance = 0.02
 
         if let timer = timer {
             RunLoop.current.add(timer, forMode: .common)
+        }
+
+        // Recolor the border when the system switches between light and dark
+        // mode; otherwise the old color lingers until a window moves.
+        appearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
+            DispatchQueue.main.async {
+                self?.forceUpdate()
+            }
         }
     }
 
