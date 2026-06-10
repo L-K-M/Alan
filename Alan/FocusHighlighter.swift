@@ -9,26 +9,47 @@ import AppKit
 import ApplicationServices
 
 class FocusHighlighter {
-    
+
     static let shared = FocusHighlighter()
 
     private let systemWideElement = AXUIElementCreateSystemWide()
     private let highlightWindow = HighlightWindow()
-    private var timer: Timer?
     private var lastFrame: CGRect?
+
+    private var axObserver: AXObserver?
+    private var observedAppElement: AXUIElement?
+    private var observedPid: pid_t = -1
+
+    private var workspaceObserver: NSObjectProtocol?
     private var appearanceObservation: NSKeyValueObservation?
+    private var dragMonitor: Any?
+    private var dragTimer: Timer?
 
     func start() {
-        handleFocusChange()
+        refresh()
+        observeFrontmostApp()
 
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            self?.handleFocusChange()
+        // Re-attach the AX observer whenever another app becomes frontmost
+        workspaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.observeFrontmostApp()
+            self?.refresh()
         }
-        // The exact tick timing doesn't matter; let the system coalesce wakeups
-        timer?.tolerance = 0.02
 
-        if let timer = timer {
-            RunLoop.current.add(timer, forMode: .common)
+        // AX delivers window moved/resized notifications when the gesture
+        // ends, not continuously during a live drag, so follow the window
+        // with a short-lived timer while the mouse button is down.
+        dragMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self else { return }
+            if event.type == .leftMouseDragged {
+                self.startDragTracking()
+            } else {
+                self.stopDragTracking()
+                self.refresh()
+            }
         }
 
         // Recolor the border when the system switches between light and dark
@@ -44,8 +65,80 @@ class FocusHighlighter {
         guard let lastFrame else { return }
         highlightWindow.updateFrame(to: lastFrame)
     }
-    
-    private func handleFocusChange() {
+
+    // MARK: - AX notifications
+
+    private static let axCallback: AXObserverCallback = { _, _, _, refcon in
+        guard let refcon else { return }
+        Unmanaged<FocusHighlighter>.fromOpaque(refcon).takeUnretainedValue().refresh()
+    }
+
+    private func observeFrontmostApp() {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return }
+        let pid = app.processIdentifier
+        guard pid != observedPid else { return }
+
+        stopObservingApp()
+
+        var observer: AXObserver?
+        guard AXObserverCreate(pid, FocusHighlighter.axCallback, &observer) == .success,
+              let observer else { return }
+
+        let appElement = AXUIElementCreateApplication(pid)
+        let refcon = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+
+        // Registered on the application element, the window notifications
+        // are delivered for all of the app's windows.
+        let notifications = [
+            kAXFocusedWindowChangedNotification,
+            kAXWindowMovedNotification,
+            kAXWindowResizedNotification,
+            kAXWindowMiniaturizedNotification,
+            kAXWindowDeminiaturizedNotification,
+            kAXApplicationHiddenNotification,
+            kAXApplicationShownNotification
+        ]
+        for notification in notifications {
+            AXObserverAddNotification(observer, appElement, notification as CFString, refcon)
+        }
+
+        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
+
+        axObserver = observer
+        observedAppElement = appElement
+        observedPid = pid
+    }
+
+    private func stopObservingApp() {
+        if let observer = axObserver {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
+        }
+        axObserver = nil
+        observedAppElement = nil
+        observedPid = -1
+    }
+
+    // MARK: - Live drag tracking
+
+    private func startDragTracking() {
+        guard dragTimer == nil else { return }
+
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            self?.refresh()
+        }
+        timer.tolerance = 0.01
+        RunLoop.current.add(timer, forMode: .common)
+        dragTimer = timer
+    }
+
+    private func stopDragTracking() {
+        dragTimer?.invalidate()
+        dragTimer = nil
+    }
+
+    // MARK: - Border placement
+
+    private func refresh() {
         guard let axFrame = currentFocusedWindowFrame() else {
             if highlightWindow.isVisible {
                 highlightWindow.orderOut(nil)
