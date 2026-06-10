@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Build Alan.app
+    # The project's deployment target is macOS 15.7, which needs a newer SDK
+    # than the macos-15 image's default Xcode provides.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (Release, ad-hoc signed)
+        # CI has no certificates for the project's development team, so
+        # override automatic signing with an ad-hoc identity ("-"). The app
+        # still runs locally; only notarized distribution needs real signing.
+        run: |
+          xcodebuild build \
+            -project Alan.xcodeproj \
+            -scheme Alan \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- \
+            DEVELOPMENT_TEAM=
+
+      - name: Zip the app
+        run: ditto -c -k --keepParent build/Build/Products/Release/Alan.app Alan.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Alan
+          path: Alan.zip
+          if-no-files-found: error
