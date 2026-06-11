@@ -114,8 +114,13 @@ class HighlightView: NSView {
         let effectiveWidth = CGFloat(width) * pulseScale
         path.lineWidth = effectiveWidth
 
+        // The border is always drawn for the frontmost app's focused window,
+        // so the frontmost app is the right source for the per-app hue.
         let color: NSColor
-        if NSAppearance.isLightMode {
+        if UserDefaults.standard.bool(forKey: Key.perAppColors),
+           let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier {
+            color = NSColor.perAppColor(for: bundleID, darkMode: NSAppearance.isDarkMode)
+        } else if NSAppearance.isLightMode {
             color = UserDefaults.standard.color(forKey: Key.lightMode) ?? Defaults.lightModeColor
         } else {
             color = UserDefaults.standard.color(forKey: Key.darkMode) ?? Defaults.darkModeColor

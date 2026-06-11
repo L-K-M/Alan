@@ -27,6 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Key.cornerRadius: 0,
             Key.hideBorderWhenMaximized: false,
             Key.focusPulse: false,
+            Key.perAppColors: false,
             Key.hideDock: false
         ])
 
