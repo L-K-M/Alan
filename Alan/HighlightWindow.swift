@@ -37,10 +37,46 @@ class HighlightWindow: NSWindow {
         self.contentView?.setNeedsDisplay(.infinite)
         orderFrontRegardless()
     }
+
+    // MARK: - Focus pulse
+
+    private var pulseTimer: Timer?
+    private var pulseStart: Date?
+
+    // Briefly thicken the border, then ease back to the configured width.
+    func pulse() {
+        guard let view = contentView as? HighlightView else { return }
+
+        pulseTimer?.invalidate()
+        pulseStart = Date()
+
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self, let start = self.pulseStart else {
+                timer.invalidate()
+                return
+            }
+            let progress = Date().timeIntervalSince(start) / Defaults.focusPulseDuration
+            if progress >= 1 {
+                view.pulseScale = 1
+                timer.invalidate()
+                self.pulseTimer = nil
+            } else {
+                // Ease-out: start thick, settle quickly.
+                let eased = pow(1 - progress, 2)
+                view.pulseScale = 1 + (Defaults.focusPulsePeak - 1) * CGFloat(eased)
+            }
+            view.needsDisplay = true
+        }
+        RunLoop.current.add(timer, forMode: .common)
+        pulseTimer = timer
+    }
 }
 
 class HighlightView: NSView {
     override var isFlipped: Bool { true }
+
+    // Stroke width multiplier, animated by HighlightWindow.pulse().
+    var pulseScale: CGFloat = 1
 
     // The stroke color depends on the current appearance, so the border must be
     // redrawn when the system switches between light and dark mode.
@@ -73,7 +109,10 @@ class HighlightView: NSView {
         } else {
             path = NSBezierPath(rect: borderBounds)
         }
-        path.lineWidth = CGFloat(width)
+        // At the maximum width (20) and pulse peak (2.5) the stroke extends
+        // 25 pt past the path, which still fits inside margin + inset.
+        let effectiveWidth = CGFloat(width) * pulseScale
+        path.lineWidth = effectiveWidth
 
         let color: NSColor
         if NSAppearance.isLightMode {
@@ -94,7 +133,7 @@ class HighlightView: NSView {
             let outerClipPath = NSBezierPath(rect: outerClipRect)
 
             let innerExcludePath: NSBezierPath
-            let halfWidth = CGFloat(width) / 2.0
+            let halfWidth = effectiveWidth / 2.0
             let innerBounds = borderBounds.insetBy(dx: -halfWidth, dy: -halfWidth)
             if cornerRadius > 0 {
                 let innerRadius = CGFloat(cornerRadius) + halfWidth

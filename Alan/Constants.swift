@@ -12,6 +12,8 @@ struct Defaults {
     static let darkModeColor = NSColor.white
     static let frameDrawingDisableTimeout: TimeInterval = 0.25
     static let screenFillTolerance: CGFloat = 5
+    static let focusPulseDuration: TimeInterval = 0.5
+    static let focusPulsePeak: CGFloat = 2.5
 }
 
 struct Key {
@@ -26,4 +28,5 @@ struct Key {
     static let showFrameWhileDragging = "showFrameWhileDragging"
     static let excludedApps = "excludedApps"
     static let hideBorderWhenMaximized = "hideBorderWhenMaximized"
+    static let focusPulse = "focusPulse"
 }
