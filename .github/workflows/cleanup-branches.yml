@@ -1,0 +1,47 @@
+# Deletes remote branches that are fully merged into main (by ancestry),
+# plus any explicitly listed extras — for branches whose content was
+# cherry-picked or rebased rather than merged, which ancestry can't see.
+# main itself is never touched.
+name: Cleanup merged branches
+
+on:
+  workflow_dispatch:
+    inputs:
+      also:
+        description: 'Extra branches to delete (space-separated)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    name: Delete merged branches
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Delete branches merged into main
+        env:
+          ALSO: ${{ inputs.also }}
+        run: |
+          git fetch --prune origin
+          git for-each-ref --format='%(refname:short)' refs/remotes/origin |
+            sed 's|^origin/||' |
+            grep -v -e '^main$' -e '^HEAD' |
+            while read -r ref; do
+              if git merge-base --is-ancestor "origin/$ref" origin/main; then
+                echo "deleting merged branch: $ref"
+                git push origin --delete "$ref" || true
+              else
+                echo "keeping unmerged branch: $ref"
+              fi
+            done
+          for ref in $ALSO; do
+            echo "deleting requested branch: $ref"
+            git push origin --delete "$ref" || true
+          done
