@@ -7,6 +7,7 @@
 
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 
 class FocusHighlighter {
 
@@ -26,12 +27,18 @@ class FocusHighlighter {
     private var observedAppElement: AXUIElement?
     private var observedPid: pid_t = -1
 
+    private var flashTimer: Timer?
+    private var flashCount = 0
+    private var hotKeyRef: EventHotKeyRef?
+    private var hotKeyEventHandler: EventHandlerRef?
+
     private var workspaceObserver: NSObjectProtocol?
     private var appearanceObservation: NSKeyValueObservation?
     private var dragMonitor: Any?
     private var dragTimer: Timer?
 
     func start() {
+        updateHotkeyRegistration()
         refresh()
         observeFrontmostApp()
 
@@ -68,11 +75,97 @@ class FocusHighlighter {
     }
 
     func forceUpdate() {
+        // Defaults may have changed, so reconcile the hotkey registration.
+        updateHotkeyRegistration()
+
         // Re-evaluate from scratch rather than redrawing the remembered
         // frame, so settings that decide *whether* the border shows (hide
         // when maximized, excluded apps) apply the moment they're toggled.
         frameIsDrawn = false
         refresh()
+    }
+
+    // MARK: - Find my window
+
+    private func updateHotkeyRegistration() {
+        if UserDefaults.standard.bool(forKey: Key.findMyWindowHotkey) {
+            registerFindMyWindowHotkey()
+        } else {
+            unregisterFindMyWindowHotkey()
+        }
+    }
+
+    // Control-Option-Command-F. A Carbon hotkey consumes the keystroke
+    // (unlike a passive event monitor, which would let it through to the
+    // focused app) and needs no extra permissions.
+    private func registerFindMyWindowHotkey() {
+        guard hotKeyRef == nil else { return }
+
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        let refcon = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
+            guard let userData else { return noErr }
+            Unmanaged<FocusHighlighter>.fromOpaque(userData).takeUnretainedValue().flashBorder()
+            return noErr
+        }, 1, &eventType, refcon, &hotKeyEventHandler)
+
+        let hotKeyID = EventHotKeyID(signature: OSType(0x414C_414E) /* 'ALAN' */, id: 1)
+        RegisterEventHotKey(
+            UInt32(kVK_ANSI_F),
+            UInt32(controlKey | optionKey | cmdKey),
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+    }
+
+    private func unregisterFindMyWindowHotkey() {
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
+        }
+        if let hotKeyEventHandler {
+            RemoveEventHandler(hotKeyEventHandler)
+            self.hotKeyEventHandler = nil
+        }
+    }
+
+    // Flash the border three times around the focused window, regardless
+    // of any setting that currently hides it — that's the point: finding
+    // the window you can't see the border of. In spotlight mode the border
+    // flashes on top of the dimming.
+    func flashBorder() {
+        guard flashTimer == nil else { return }
+        guard let (_, axFrame) = currentFocusedWindow() else { return }
+        let frame = cocoaRect(fromAXRect: axFrame)
+
+        flashCount = 0
+        highlightWindow.updateFrame(to: frame)
+
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] timer in
+            guard let self else {
+                timer.invalidate()
+                return
+            }
+            self.flashCount += 1
+            if self.flashCount >= 6 {
+                timer.invalidate()
+                self.flashTimer = nil
+                // Put whatever the settings say back on screen.
+                self.frameIsDrawn = false
+                self.refresh()
+            } else if self.flashCount % 2 == 1 {
+                self.highlightWindow.orderOut(nil)
+            } else {
+                self.highlightWindow.updateFrame(to: frame)
+            }
+        }
+        RunLoop.current.add(timer, forMode: .common)
+        flashTimer = timer
     }
 
     // MARK: - AX notifications
@@ -148,6 +241,9 @@ class FocusHighlighter {
     // MARK: - Border placement
 
     private func refresh() {
+        // While the flash is running it owns the highlight window.
+        guard flashTimer == nil else { return }
+
         // Check if the frontmost app is excluded
         if let frontmostApp = NSWorkspace.shared.frontmostApplication,
            let bundleIdentifier = frontmostApp.bundleIdentifier {

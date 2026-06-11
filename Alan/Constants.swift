@@ -32,4 +32,5 @@ struct Key {
     static let focusPulse = "focusPulse"
     static let perAppColors = "perAppColors"
     static let spotlightMode = "spotlightMode"
+    static let findMyWindowHotkey = "findMyWindowHotkey"
 }

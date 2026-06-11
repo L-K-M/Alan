@@ -19,6 +19,7 @@ class PrefsWindowController: NSWindowController {
     @IBOutlet weak var focusPulseCheckbox: NSButton!
     @IBOutlet weak var perAppColorsCheckbox: NSButton!
     @IBOutlet weak var spotlightModeCheckbox: NSButton!
+    @IBOutlet weak var findMyWindowHotkeyCheckbox: NSButton!
     @IBOutlet weak var excludedAppsTableView: NSTableView!
 
     private var excludedApps: [String] = []
@@ -49,6 +50,9 @@ class PrefsWindowController: NSWindowController {
 
         let spotlightMode = UserDefaults.standard.bool(forKey: Key.spotlightMode)
         spotlightModeCheckbox.state = spotlightMode ? .on : .off
+
+        let findMyWindowHotkey = UserDefaults.standard.bool(forKey: Key.findMyWindowHotkey)
+        findMyWindowHotkeyCheckbox.state = findMyWindowHotkey ? .on : .off
 
         excludedApps = UserDefaults.standard.stringArray(forKey: Key.excludedApps) ?? []
         excludedAppsTableView?.delegate = self
@@ -91,6 +95,10 @@ class PrefsWindowController: NSWindowController {
 
     @IBAction func spotlightModeChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.spotlightMode)
+    }
+
+    @IBAction func findMyWindowHotkeyChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.findMyWindowHotkey)
     }
 
     @IBAction func addExcludedApp(_ sender: Any) {
