@@ -15,6 +15,7 @@ class PrefsWindowController: NSWindowController {
     @IBOutlet weak var showFrameWhileDraggingCheckbox: NSButton!
     @IBOutlet weak var glowingBorderCheckbox: NSButton!
     @IBOutlet weak var strongerShadowCheckbox: NSButton!
+    @IBOutlet weak var hideBorderWhenMaximizedCheckbox: NSButton!
     @IBOutlet weak var excludedAppsTableView: NSTableView!
 
     private var excludedApps: [String] = []
@@ -33,6 +34,9 @@ class PrefsWindowController: NSWindowController {
 
         let strongerShadow = UserDefaults.standard.bool(forKey: Key.strongerShadow)
         strongerShadowCheckbox.state = strongerShadow ? .on : .off
+
+        let hideBorderWhenMaximized = UserDefaults.standard.bool(forKey: Key.hideBorderWhenMaximized)
+        hideBorderWhenMaximizedCheckbox.state = hideBorderWhenMaximized ? .on : .off
 
         excludedApps = UserDefaults.standard.stringArray(forKey: Key.excludedApps) ?? []
         excludedAppsTableView?.delegate = self
@@ -59,6 +63,10 @@ class PrefsWindowController: NSWindowController {
 
     @IBAction func strongerShadowChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.strongerShadow)
+    }
+
+    @IBAction func hideBorderWhenMaximizedChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.hideBorderWhenMaximized)
     }
 
     @IBAction func addExcludedApp(_ sender: Any) {
