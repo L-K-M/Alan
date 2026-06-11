@@ -5,6 +5,8 @@ always see where your keyboard input is going.
 
 ![screenshot](screenshot.png)
 
+**Latest release:** v<!-- version -->2.5.0<!-- /version --> · [Download](https://github.com/L-K-M/Alan/releases/latest)
+
 ## About this fork
 
 This is a fork of [tylerhall/Alan](https://github.com/tylerhall/Alan).
