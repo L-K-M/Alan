@@ -31,6 +31,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Key.perAppColors: false,
             Key.spotlightMode: false,
             Key.findMyWindowHotkey: false,
+            Key.findMyWindowKeyCode: Defaults.findMyWindowDefaultKeyCode,
+            Key.findMyWindowModifiers: Defaults.findMyWindowDefaultModifiers,
+            Key.findMyWindowShortcutLabel: Defaults.findMyWindowDefaultLabel,
+            Key.shakeToFind: false,
+            Key.spotlightDimLevel: Defaults.spotlightDimAlpha,
             Key.partyMode: false,
             Key.hideDock: false
         ])

@@ -31,6 +31,17 @@ class FocusHighlighter {
     private var flashCount = 0
     private var hotKeyRef: EventHotKeyRef?
     private var hotKeyEventHandler: EventHandlerRef?
+    private var registeredKeyCode: UInt32 = 0
+    private var registeredModifiers: UInt32 = 0
+
+    private var shakeMonitor: Any?
+    private var shakeLastX: CGFloat?
+    private var shakeDirection: CGFloat = 0
+    private var shakeReversals: [TimeInterval] = []
+    private var shakeCooldownUntil: TimeInterval = 0
+
+    private var displayedCutout: CGRect?
+    private var spotlightAnimationTimer: Timer?
 
     private var workspaceObserver: NSObjectProtocol?
     private var defaultsObserver: NSObjectProtocol?
@@ -40,6 +51,7 @@ class FocusHighlighter {
 
     func start() {
         updateHotkeyRegistration()
+        updateShakeMonitor()
         refresh()
         observeFrontmostApp()
 
@@ -87,8 +99,9 @@ class FocusHighlighter {
     }
 
     func forceUpdate() {
-        // Defaults may have changed, so reconcile the hotkey registration.
+        // Defaults may have changed, so reconcile the global listeners.
         updateHotkeyRegistration()
+        updateShakeMonitor()
 
         // Re-evaluate from scratch rather than redrawing the remembered
         // frame, so settings that decide *whether* the border shows (hide
@@ -100,17 +113,27 @@ class FocusHighlighter {
     // MARK: - Find my window
 
     private func updateHotkeyRegistration() {
-        if UserDefaults.standard.bool(forKey: Key.findMyWindowHotkey) {
-            registerFindMyWindowHotkey()
-        } else {
+        guard UserDefaults.standard.bool(forKey: Key.findMyWindowHotkey) else {
             unregisterFindMyWindowHotkey()
+            return
         }
+
+        let keyCode = UInt32(UserDefaults.standard.integer(forKey: Key.findMyWindowKeyCode))
+        let modifiers = UInt32(UserDefaults.standard.integer(forKey: Key.findMyWindowModifiers))
+
+        // Re-register when the recorded shortcut changed.
+        if hotKeyRef != nil, keyCode == registeredKeyCode, modifiers == registeredModifiers {
+            return
+        }
+        unregisterFindMyWindowHotkey()
+        registerFindMyWindowHotkey(keyCode: keyCode, modifiers: modifiers)
     }
 
-    // Control-Option-Command-F. A Carbon hotkey consumes the keystroke
-    // (unlike a passive event monitor, which would let it through to the
-    // focused app) and needs no extra permissions.
-    private func registerFindMyWindowHotkey() {
+    // A Carbon hotkey consumes the keystroke (unlike a passive event
+    // monitor, which would let it through to the focused app) and needs no
+    // extra permissions. The combo comes from the defaults, recorded in
+    // Preferences; ⌃⌥⌘F out of the box.
+    private func registerFindMyWindowHotkey(keyCode: UInt32, modifiers: UInt32) {
         // The event handler is installed once and kept for the app's
         // lifetime; it does nothing while no hotkey is registered. It must
         // not be reinstalled per attempt: registration is retried on every
@@ -134,8 +157,8 @@ class FocusHighlighter {
 
         let hotKeyID = EventHotKeyID(signature: OSType(0x414C_414E) /* 'ALAN' */, id: 1)
         let status = RegisterEventHotKey(
-            UInt32(kVK_ANSI_F),
-            UInt32(controlKey | optionKey | cmdKey),
+            keyCode,
+            modifiers,
             hotKeyID,
             GetApplicationEventTarget(),
             0,
@@ -145,6 +168,9 @@ class FocusHighlighter {
             // The out parameter is not defined on failure; make sure the
             // next attempt isn't fooled into thinking we're registered.
             hotKeyRef = nil
+        } else {
+            registeredKeyCode = keyCode
+            registeredModifiers = modifiers
         }
     }
 
@@ -153,6 +179,48 @@ class FocusHighlighter {
             UnregisterEventHotKey(hotKeyRef)
             self.hotKeyRef = nil
         }
+    }
+
+    // MARK: - Shake to find
+
+    private func updateShakeMonitor() {
+        let enabled = UserDefaults.standard.bool(forKey: Key.shakeToFind)
+        if enabled, shakeMonitor == nil {
+            shakeMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
+                self?.detectShake(at: NSEvent.mouseLocation.x)
+            }
+        } else if !enabled, let shakeMonitor {
+            NSEvent.removeMonitor(shakeMonitor)
+            self.shakeMonitor = nil
+            shakeLastX = nil
+            shakeDirection = 0
+            shakeReversals.removeAll()
+        }
+    }
+
+    // A shake is a quick horizontal scrub: several direction reversals of
+    // decent amplitude within a short window — the same gesture macOS uses
+    // for shake-to-enlarge-cursor.
+    private func detectShake(at x: CGFloat) {
+        defer { shakeLastX = x }
+        guard let lastX = shakeLastX else { return }
+
+        let dx = x - lastX
+        guard abs(dx) > Defaults.shakeMinSwing else { return }
+
+        let direction: CGFloat = dx > 0 ? 1 : -1
+        if direction != shakeDirection, shakeDirection != 0 {
+            let now = Date().timeIntervalSinceReferenceDate
+            shakeReversals.append(now)
+            shakeReversals.removeAll { now - $0 > Defaults.shakeWindow }
+
+            if shakeReversals.count >= Defaults.shakeReversalCount, now > shakeCooldownUntil {
+                shakeCooldownUntil = now + Defaults.shakeCooldown
+                shakeReversals.removeAll()
+                flashBorder()
+            }
+        }
+        shakeDirection = direction
     }
 
     // Flash the border three times around the focused window, regardless
@@ -352,7 +420,7 @@ class FocusHighlighter {
         if UserDefaults.standard.bool(forKey: Key.spotlightMode) {
             highlightWindow.setPartyMode(false)
             highlightWindow.orderOut(nil)
-            updateDimWindows(cutout: frame)
+            moveSpotlight(to: frame)
         } else {
             hideDimWindows()
             highlightWindow.updateFrame(to: frame)
@@ -368,6 +436,54 @@ class FocusHighlighter {
         highlightWindow.orderOut(nil)
         hideDimWindows()
         highlightVisible = false
+        spotlightAnimationTimer?.invalidate()
+        spotlightAnimationTimer = nil
+        displayedCutout = nil
+    }
+
+    // The cut-out glides from where it is to the new window over a few
+    // frames — a stage light swinging across the screen — instead of
+    // teleporting. Re-targeting mid-flight restarts from the current
+    // position, so a window dragged at 30 Hz is chased smoothly.
+    private func moveSpotlight(to target: CGRect) {
+        guard let from = displayedCutout, from != target else {
+            // First reveal, or a redraw with an unchanged frame (settings
+            // like the dim level still need the windows repainted).
+            spotlightAnimationTimer?.invalidate()
+            spotlightAnimationTimer = nil
+            displayedCutout = target
+            updateDimWindows(cutout: target)
+            return
+        }
+
+        spotlightAnimationTimer?.invalidate()
+        let start = Date().timeIntervalSinceReferenceDate
+
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self else {
+                timer.invalidate()
+                return
+            }
+            let t = (Date().timeIntervalSinceReferenceDate - start) / Defaults.spotlightAnimationDuration
+            if t >= 1 {
+                timer.invalidate()
+                self.spotlightAnimationTimer = nil
+                self.displayedCutout = target
+                self.updateDimWindows(cutout: target)
+            } else {
+                let e = CGFloat(t * t * (3 - 2 * t))
+                let r = CGRect(
+                    x: from.minX + (target.minX - from.minX) * e,
+                    y: from.minY + (target.minY - from.minY) * e,
+                    width: from.width + (target.width - from.width) * e,
+                    height: from.height + (target.height - from.height) * e
+                )
+                self.displayedCutout = r
+                self.updateDimWindows(cutout: r)
+            }
+        }
+        RunLoop.current.add(timer, forMode: .common)
+        spotlightAnimationTimer = timer
     }
 
     private func updateDimWindows(cutout: CGRect) {

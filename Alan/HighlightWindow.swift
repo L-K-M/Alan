@@ -111,6 +111,37 @@ class HighlightView: NSView {
         NSGraphicsContext.current?.saveGraphicsState()
         defer { NSGraphicsContext.current?.restoreGraphicsState() }
 
+        // The window frame sits shadowMargin inside this view's bounds.
+        let margin = HighlightWindow.shadowMargin
+        HighlightView.drawBorder(
+            around: bounds.insetBy(dx: margin, dy: margin),
+            pulseScale: pulseScale
+        )
+    }
+
+    // The configured border color: party mode outranks everything
+    // (obviously), then per-app colors, then the light/dark wells. The
+    // border is always drawn for the frontmost app's focused window, so
+    // the frontmost app is the right source for the per-app hue.
+    static func currentBorderColor() -> NSColor {
+        if UserDefaults.standard.bool(forKey: Key.partyMode) {
+            let phase = Date().timeIntervalSinceReferenceDate / Defaults.partyModeCycleDuration
+            let hue = CGFloat(phase.truncatingRemainder(dividingBy: 1))
+            return NSColor(hue: hue, saturation: 0.85, brightness: 1, alpha: 1)
+        }
+        if UserDefaults.standard.bool(forKey: Key.perAppColors),
+           let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier {
+            return NSColor.perAppColor(for: bundleID, darkMode: NSAppearance.isDarkMode)
+        }
+        if NSAppearance.isLightMode {
+            return UserDefaults.standard.color(forKey: Key.lightMode) ?? Defaults.lightModeColor
+        }
+        return UserDefaults.standard.color(forKey: Key.darkMode) ?? Defaults.darkModeColor
+    }
+
+    // Draws the configured border around a window's rect into the current
+    // graphics context — shared by the overlay and the Preferences preview.
+    static func drawBorder(around windowRect: CGRect, pulseScale: CGFloat = 1) {
         var inset = UserDefaults.standard.integer(forKey: Key.inset)
         inset = max(1, min(20, inset))
 
@@ -120,9 +151,7 @@ class HighlightView: NSView {
         var cornerRadius = UserDefaults.standard.integer(forKey: Key.cornerRadius)
         cornerRadius = max(0, min(50, cornerRadius))
 
-        // Account for the shadow margin - the actual border should be inset by the margin
-        let margin = HighlightWindow.shadowMargin
-        let borderBounds = bounds.insetBy(dx: margin + CGFloat(inset), dy: margin + CGFloat(inset))
+        let borderBounds = windowRect.insetBy(dx: CGFloat(inset), dy: CGFloat(inset))
         let path: NSBezierPath
         if cornerRadius > 0 {
             path = NSBezierPath(roundedRect: borderBounds, xRadius: CGFloat(cornerRadius), yRadius: CGFloat(cornerRadius))
@@ -134,33 +163,15 @@ class HighlightView: NSView {
         let effectiveWidth = CGFloat(width) * pulseScale
         path.lineWidth = effectiveWidth
 
-        // The border is always drawn for the frontmost app's focused window,
-        // so the frontmost app is the right source for the per-app hue.
-        let color: NSColor
-        if UserDefaults.standard.bool(forKey: Key.partyMode) {
-            // Party mode outranks everything. Obviously.
-            let phase = Date().timeIntervalSinceReferenceDate / Defaults.partyModeCycleDuration
-            let hue = CGFloat(phase.truncatingRemainder(dividingBy: 1))
-            color = NSColor(hue: hue, saturation: 0.85, brightness: 1, alpha: 1)
-        } else if UserDefaults.standard.bool(forKey: Key.perAppColors),
-           let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier {
-            color = NSColor.perAppColor(for: bundleID, darkMode: NSAppearance.isDarkMode)
-        } else if NSAppearance.isLightMode {
-            color = UserDefaults.standard.color(forKey: Key.lightMode) ?? Defaults.lightModeColor
-        } else {
-            color = UserDefaults.standard.color(forKey: Key.darkMode) ?? Defaults.darkModeColor
-        }
+        let color = currentBorderColor()
 
         // Draw stronger shadow if enabled (outer shadow only)
-        let strongerShadow = UserDefaults.standard.bool(forKey: Key.strongerShadow)
-
-        if strongerShadow {
+        if UserDefaults.standard.bool(forKey: Key.strongerShadow) {
             NSGraphicsContext.current?.saveGraphicsState()
 
-            // Create a clipping path that excludes the interior of the border
-            // This ensures the shadow only appears outside
-            let outerClipRect = bounds.insetBy(dx: -50, dy: -50)
-            let outerClipPath = NSBezierPath(rect: outerClipRect)
+            // Clip to the region outside the border so the shadow doesn't
+            // darken the window itself.
+            let outerClipPath = NSBezierPath(rect: windowRect.insetBy(dx: -50, dy: -50))
 
             let innerExcludePath: NSBezierPath
             let halfWidth = effectiveWidth / 2.0
@@ -172,7 +183,6 @@ class HighlightView: NSView {
                 innerExcludePath = NSBezierPath(rect: innerBounds)
             }
 
-            // Use even-odd winding to clip out the interior
             outerClipPath.append(innerExcludePath)
             outerClipPath.windingRule = .evenOdd
             outerClipPath.addClip()
@@ -189,9 +199,7 @@ class HighlightView: NSView {
         }
 
         // Draw glow if enabled
-        let glowingBorder = UserDefaults.standard.bool(forKey: Key.glowingBorder)
-
-        if glowingBorder {
+        if UserDefaults.standard.bool(forKey: Key.glowingBorder) {
             NSGraphicsContext.current?.saveGraphicsState()
             let glowShadow = NSShadow()
             glowShadow.shadowColor = color.withAlphaComponent(0.8)
@@ -203,9 +211,8 @@ class HighlightView: NSView {
             NSGraphicsContext.current?.restoreGraphicsState()
         }
 
-        // Draw the main border stroke
+        // The main border stroke
         color.setStroke()
-
         path.stroke()
     }
 }
@@ -266,7 +273,13 @@ class DimView: NSView {
             path.windingRule = .evenOdd
         }
 
-        NSColor.black.withAlphaComponent(Defaults.spotlightDimAlpha).setFill()
+        var dimLevel = UserDefaults.standard.double(forKey: Key.spotlightDimLevel)
+        if dimLevel == 0 {
+            dimLevel = Defaults.spotlightDimAlpha
+        }
+        dimLevel = max(0.05, min(0.9, dimLevel))
+
+        NSColor.black.withAlphaComponent(CGFloat(dimLevel)).setFill()
         path.fill()
     }
 }
