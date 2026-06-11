@@ -76,10 +76,6 @@ conditional cast would make it crash-proof.
 
 ## Ideas — novel, delightful, quirky
 
-- **Per-app colors.** Hash the frontmost app's bundle ID into a hue (the AX
-  element already knows its pid; `NSRunningApplication` gives the bundle
-  ID). Terminal is always teal, Xcode always whatever it deserves — you
-  learn the colors within a day.
 - **Party mode** 🌈. Slowly cycle the border hue. Zero practical value,
   maximal joy, perfectly on-brand for a self-described satire app.
 - **Spotlight mode.** Instead of a border, dim everything *except* the

@@ -29,4 +29,5 @@ struct Key {
     static let excludedApps = "excludedApps"
     static let hideBorderWhenMaximized = "hideBorderWhenMaximized"
     static let focusPulse = "focusPulse"
+    static let perAppColors = "perAppColors"
 }

@@ -31,6 +31,8 @@ that, this fork adds:
 - An excluded-apps list, for apps that should never get a border.
 - An optional focus pulse: the border briefly thickens when focus
   changes, then settles.
+- Optional per-app border colors, with each app's hue derived from its
+  bundle identifier — you learn the colors within a day.
 - Event-driven window tracking via `AXObserver` (replacing the original
   10 Hz polling), with a short-lived timer to follow live drags.
 - The border recolors immediately when the system switches between light
@@ -73,6 +75,8 @@ Or build it yourself: open `Alan.xcodeproj` in Xcode and hit Run.
   full-screen windows, decided per display
 - **Pulse border on focus change** — briefly thickens the border when
   focus moves, then settles
+- **Per-app border colors** — each app gets a stable hue hashed from its
+  bundle ID (the light/dark color wells are ignored while this is on)
 - **Excluded Apps** — apps in this list never get a border
 
 The hidden-Dock mode is the one remaining `defaults`-only setting:
