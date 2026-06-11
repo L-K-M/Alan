@@ -65,8 +65,11 @@ class FocusHighlighter {
     }
 
     func forceUpdate() {
-        guard let lastFrame else { return }
-        highlightWindow.updateFrame(to: lastFrame)
+        // Re-evaluate from scratch rather than redrawing the remembered
+        // frame, so settings that decide *whether* the border shows (hide
+        // when maximized, excluded apps) apply the moment they're toggled.
+        frameIsDrawn = false
+        refresh()
     }
 
     // MARK: - AX notifications
@@ -166,6 +169,17 @@ class FocusHighlighter {
 
         let cocoaFrame = cocoaRect(fromAXRect: axFrame)
 
+        // A window that fills its whole screen doesn't need a border to be
+        // found, so optionally skip it. This covers zoomed/"maximized"
+        // windows as well as native full-screen ones.
+        if UserDefaults.standard.bool(forKey: Key.hideBorderWhenMaximized), windowFillsScreen(cocoaFrame) {
+            if highlightWindow.isVisible {
+                highlightWindow.orderOut(nil)
+                lastFrame = nil
+            }
+            return
+        }
+
         if lastFrame != cocoaFrame {
             lastFrame = cocoaFrame
             frameIsDrawn = false;
@@ -192,6 +206,34 @@ class FocusHighlighter {
             self?.drawFrame = true
             self?.refresh()
         }
+    }
+
+    // A window counts as filling a screen when it covers that screen's
+    // visible frame — the area inside the menu bar and Dock, which is what
+    // zooming a window fills. Native full-screen windows cover even more,
+    // so they pass the same test. The check is against the screen the
+    // window is mostly on, so on multi-monitor setups a window merely
+    // spanning displays doesn't qualify unless it really covers one.
+    private func windowFillsScreen(_ frame: CGRect) -> Bool {
+        var windowScreen: NSScreen?
+        var bestOverlap: CGFloat = 0
+        for screen in NSScreen.screens {
+            let overlap = frame.intersection(screen.frame)
+            let area = overlap.width * overlap.height
+            if area > bestOverlap {
+                bestOverlap = area
+                windowScreen = screen
+            }
+        }
+        guard let windowScreen else { return false }
+
+        // The tolerance forgives apps that "maximize" a few points short,
+        // like grid-rounded terminals.
+        let target = windowScreen.visibleFrame.insetBy(
+            dx: Defaults.screenFillTolerance,
+            dy: Defaults.screenFillTolerance
+        )
+        return frame.contains(target)
     }
 
     // Hello, darkness, my old friend. I'm still really bad at this API.

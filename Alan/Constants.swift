@@ -11,6 +11,7 @@ struct Defaults {
     static let lightModeColor = NSColor.black
     static let darkModeColor = NSColor.white
     static let frameDrawingDisableTimeout: TimeInterval = 0.25
+    static let screenFillTolerance: CGFloat = 5
 }
 
 struct Key {
@@ -24,4 +25,5 @@ struct Key {
     static let darkMode = "darkMode"
     static let showFrameWhileDragging = "showFrameWhileDragging"
     static let excludedApps = "excludedApps"
+    static let hideBorderWhenMaximized = "hideBorderWhenMaximized"
 }
