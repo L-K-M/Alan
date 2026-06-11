@@ -3,15 +3,7 @@
 Alan draws a colored border around the active window on macOS, so you can
 always see where your keyboard input is going.
 
-It works by watching the focused window through the macOS Accessibility
-API and laying a borderless, click-through overlay window on top of it,
-with a stroked rectangle in a color of your choosing — one color for light
-mode, one for dark mode.
-
-> 2025-12-03: Thanks to everyone filing bugs, but this app is more
-> software satire than useful utility :)
-
-— [Tyler Hall](https://github.com/tylerhall), original author
+![screenshot](screenshot.png)
 
 ## About this fork
 
@@ -38,26 +30,14 @@ that, this fork adds:
   except the focused window is dimmed.
 - A "find my window" hotkey (⌃⌥⌘F) that flashes the border three times
   around the focused window.
-- Party mode 🌈 — the border slowly cycles through the rainbow. Zero
-  practical value, maximal joy.
 - Event-driven window tracking via `AXObserver` (replacing the original
   10 Hz polling), with a short-lived timer to follow live drags.
-- The border recolors immediately when the system switches between light
-  and dark mode.
 - A status-bar item in hidden-Dock mode, so the app can still be quit and
   configured when it has no Dock icon or menu bar.
 - Fixes for the accessibility-permission deep link, `UserDefaults`
   registration, and deprecated `NSColor` archiving.
 - CI on every push, and a release workflow that builds and publishes the
   app when a version tag is pushed.
-- [`awesome.md`](awesome.md), a code review with remaining known issues
-  and ideas.
-
-## Requirements
-
-- macOS 15.7 or later
-- Accessibility permission (System Settings → Privacy & Security →
-  Accessibility) — this is how Alan finds the focused window
 
 ## Install
 
@@ -71,27 +51,7 @@ Or build it yourself: open `Alan.xcodeproj` in Xcode and hit Run.
 
 ## Configuration
 
-**Preferences…** covers just about everything:
-
-- Border width and inset (1–20 points), corner radius (0–50 points)
-- One border color for light mode, one for dark mode
-- **Stronger Shadow** and **Glowing Border**
-- **Show border while dragging** — untick to hide the border while a
-  window is moving; it reappears once the window has settled
-- **Hide border when window fills the screen** — skips maximized
-  windows, decided per display (native full-screen windows are always
-  skipped, setting or no setting)
-- **Pulse border on focus change** — briefly thickens the border when
-  focus moves, then settles
-- **Per-app border colors** — each app gets a stable hue hashed from its
-  bundle ID (the light/dark color wells are ignored while this is on)
-- **Spotlight mode** — dims everything except the focused window instead
-  of drawing a border
-- **“Find my window” hotkey (⌃⌥⌘F)** — flashes the border three times,
-  even when settings currently hide it
-- **Party mode 🌈** — cycles the border hue through the rainbow every
-  six seconds (outranks all other color settings, obviously)
-- **Excluded Apps** — apps in this list never get a border
+Open "Preferences..." from the menubar icon.
 
 The hidden-Dock mode is the one remaining `defaults`-only setting:
 
@@ -101,4 +61,4 @@ defaults write studio.retina.Alan hideDock -bool true   # takes effect on relaun
 
 ## License
 
-[MIT](LICENSE), © 2025 Tyler Hall.
+[MIT](LICENSE), original © 2025 Tyler Hall.
