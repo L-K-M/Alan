@@ -38,6 +38,26 @@ class HighlightWindow: NSWindow {
         orderFrontRegardless()
     }
 
+    // MARK: - Party mode
+
+    private var partyTimer: Timer?
+
+    // The hue comes from the wall clock at draw time, so all the timer has
+    // to do is keep the view redrawing while the border is on screen.
+    func setPartyMode(_ enabled: Bool) {
+        if enabled {
+            guard partyTimer == nil else { return }
+            let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+                self?.contentView?.needsDisplay = true
+            }
+            RunLoop.current.add(timer, forMode: .common)
+            partyTimer = timer
+        } else {
+            partyTimer?.invalidate()
+            partyTimer = nil
+        }
+    }
+
     // MARK: - Focus pulse
 
     private var pulseTimer: Timer?
@@ -117,7 +137,12 @@ class HighlightView: NSView {
         // The border is always drawn for the frontmost app's focused window,
         // so the frontmost app is the right source for the per-app hue.
         let color: NSColor
-        if UserDefaults.standard.bool(forKey: Key.perAppColors),
+        if UserDefaults.standard.bool(forKey: Key.partyMode) {
+            // Party mode outranks everything. Obviously.
+            let phase = Date().timeIntervalSinceReferenceDate / Defaults.partyModeCycleDuration
+            let hue = CGFloat(phase.truncatingRemainder(dividingBy: 1))
+            color = NSColor(hue: hue, saturation: 0.85, brightness: 1, alpha: 1)
+        } else if UserDefaults.standard.bool(forKey: Key.perAppColors),
            let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier {
             color = NSColor.perAppColor(for: bundleID, darkMode: NSAppearance.isDarkMode)
         } else if NSAppearance.isLightMode {

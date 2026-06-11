@@ -15,6 +15,7 @@ struct Defaults {
     static let focusPulseDuration: TimeInterval = 0.5
     static let focusPulsePeak: CGFloat = 2.5
     static let spotlightDimAlpha: CGFloat = 0.45
+    static let partyModeCycleDuration: TimeInterval = 6
 }
 
 struct Key {
@@ -33,4 +34,5 @@ struct Key {
     static let perAppColors = "perAppColors"
     static let spotlightMode = "spotlightMode"
     static let findMyWindowHotkey = "findMyWindowHotkey"
+    static let partyMode = "partyMode"
 }

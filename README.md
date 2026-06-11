@@ -37,6 +37,8 @@ that, this fork adds:
   except the focused window is dimmed.
 - A "find my window" hotkey (⌃⌥⌘F) that flashes the border three times
   around the focused window.
+- Party mode 🌈 — the border slowly cycles through the rainbow. Zero
+  practical value, maximal joy.
 - Event-driven window tracking via `AXObserver` (replacing the original
   10 Hz polling), with a short-lived timer to follow live drags.
 - The border recolors immediately when the system switches between light
@@ -85,6 +87,8 @@ Or build it yourself: open `Alan.xcodeproj` in Xcode and hit Run.
   of drawing a border
 - **“Find my window” hotkey (⌃⌥⌘F)** — flashes the border three times,
   even when settings currently hide it
+- **Party mode 🌈** — cycles the border hue through the rainbow every
+  six seconds (outranks all other color settings, obviously)
 - **Excluded Apps** — apps in this list never get a border
 
 The hidden-Dock mode is the one remaining `defaults`-only setting:

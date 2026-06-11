@@ -317,16 +317,21 @@ class FocusHighlighter {
     // windows with the focused window cut out; otherwise it's the border.
     private func showHighlight(at frame: CGRect) {
         if UserDefaults.standard.bool(forKey: Key.spotlightMode) {
+            highlightWindow.setPartyMode(false)
             highlightWindow.orderOut(nil)
             updateDimWindows(cutout: frame)
         } else {
             hideDimWindows()
             highlightWindow.updateFrame(to: frame)
+            // The party redraw timer only needs to run while the border is
+            // actually on screen.
+            highlightWindow.setPartyMode(UserDefaults.standard.bool(forKey: Key.partyMode))
         }
         highlightVisible = true
     }
 
     private func hideHighlight() {
+        highlightWindow.setPartyMode(false)
         highlightWindow.orderOut(nil)
         hideDimWindows()
         highlightVisible = false
