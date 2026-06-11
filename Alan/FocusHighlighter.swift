@@ -420,9 +420,13 @@ class FocusHighlighter {
             &focusedElement
         )
 
-        guard err == .success, let element = focusedElement as! AXUIElement? else {
+        guard err == .success,
+              let focusedElement,
+              CFGetTypeID(focusedElement) == AXUIElementGetTypeID()
+        else {
             return nil
         }
+        let element = focusedElement as! AXUIElement
 
         // If focus is a child, ask for its window
         var windowElement: CFTypeRef?
@@ -433,8 +437,10 @@ class FocusHighlighter {
         )
 
         let targetElement: AXUIElement
-        if windowErr == .success, let w = windowElement as! AXUIElement? {
-            targetElement = w
+        if windowErr == .success,
+           let windowElement,
+           CFGetTypeID(windowElement) == AXUIElementGetTypeID() {
+            targetElement = (windowElement as! AXUIElement)
         } else {
             targetElement = element
         }
