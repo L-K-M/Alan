@@ -73,21 +73,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 NSWorkspace.shared.open(url)
             }
 
-            // Give the user a clear message and quit so they can enable it
             let alert = NSAlert()
             alert.messageText = "Accessibility Permission Required"
             alert.informativeText = """
             Alan needs Accessibility permission to highlight the focused window.
 
-            Please open System Settings → Privacy & Security → Accessibility
-            and enable “Alan”.
-
-            Then relaunch Alan.
+            Enable “Alan” in System Settings → Privacy & Security → Accessibility
+            and Alan will start by itself — no relaunch needed.
             """
             alert.addButton(withTitle: "Quit")
-            alert.runModal()
 
-            NSApp.terminate(nil)
+            // Poll while the alert runs (.common covers the modal panel run
+            // loop mode) and dismiss it the moment permission is granted, so
+            // the app springs to life without a relaunch.
+            let pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                if AXIsProcessTrusted() {
+                    NSApp.stopModal()
+                }
+            }
+            RunLoop.current.add(pollTimer, forMode: .common)
+
+            let response = alert.runModal()
+            pollTimer.invalidate()
+
+            if response == .alertFirstButtonReturn {
+                // The user chose Quit instead of granting permission.
+                NSApp.terminate(nil)
+            }
+
+            // Dismissed via stopModal: permission was just granted. The
+            // panel doesn't close itself in that case.
+            alert.window.orderOut(nil)
             return
         }
     }
