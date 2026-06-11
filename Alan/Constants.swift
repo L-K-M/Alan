@@ -14,6 +14,7 @@ struct Defaults {
     static let screenFillTolerance: CGFloat = 5
     static let focusPulseDuration: TimeInterval = 0.5
     static let focusPulsePeak: CGFloat = 2.5
+    static let spotlightDimAlpha: CGFloat = 0.45
 }
 
 struct Key {
@@ -30,4 +31,5 @@ struct Key {
     static let hideBorderWhenMaximized = "hideBorderWhenMaximized"
     static let focusPulse = "focusPulse"
     static let perAppColors = "perAppColors"
+    static let spotlightMode = "spotlightMode"
 }

@@ -33,6 +33,8 @@ that, this fork adds:
   changes, then settles.
 - Optional per-app border colors, with each app's hue derived from its
   bundle identifier — you learn the colors within a day.
+- Spotlight mode, the inverse-Alan: instead of a border, everything
+  except the focused window is dimmed.
 - Event-driven window tracking via `AXObserver` (replacing the original
   10 Hz polling), with a short-lived timer to follow live drags.
 - The border recolors immediately when the system switches between light
@@ -77,6 +79,8 @@ Or build it yourself: open `Alan.xcodeproj` in Xcode and hit Run.
   focus moves, then settles
 - **Per-app border colors** — each app gets a stable hue hashed from its
   bundle ID (the light/dark color wells are ignored while this is on)
+- **Spotlight mode** — dims everything except the focused window instead
+  of drawing a border
 - **Excluded Apps** — apps in this list never get a border
 
 The hidden-Dock mode is the one remaining `defaults`-only setting:

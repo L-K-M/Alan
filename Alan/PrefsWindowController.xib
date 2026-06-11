@@ -15,6 +15,7 @@
                 <outlet property="lightModeColorWell" destination="a3u-bc-pli" id="gs0-l4-XRK"/>
                 <outlet property="perAppColorsCheckbox" destination="pac-btn-001" id="pac-out-001"/>
                 <outlet property="showFrameWhileDraggingCheckbox" destination="sfd-btn-ccc" id="sfd-out-ggg"/>
+                <outlet property="spotlightModeCheckbox" destination="sp-btn-001" id="sp-out-001"/>
                 <outlet property="strongerShadowCheckbox" destination="sr-btn-001" id="sr-out-001"/>
                 <outlet property="window" destination="QvC-M9-y7g" id="tgm-uC-mjt"/>
             </connections>
@@ -23,10 +24,10 @@
         <customObject id="-3" userLabel="Application" customClass="NSObject"/>
         <window identifier="PrefsWindowController" title="Alan" allowsToolTipsWhenApplicationIsInactive="NO" autorecalculatesKeyViewLoop="NO" releasedWhenClosed="NO" frameAutosaveName="PrefsWindowController" animationBehavior="default" id="QvC-M9-y7g">
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES"/>
-            <rect key="contentRect" x="196" y="240" width="444" height="558"/>
+            <rect key="contentRect" x="196" y="240" width="444" height="584"/>
             <rect key="screenRect" x="0.0" y="0.0" width="2880" height="1595"/>
             <view key="contentView" wantsLayer="YES" id="EiT-Mj-1SZ">
-                <rect key="frame" x="0.0" y="0.0" width="444" height="558"/>
+                <rect key="frame" x="0.0" y="0.0" width="444" height="584"/>
                 <autoresizingMask key="autoresizingMask"/>
                 <subviews>
                     <gridView xPlacement="leading" yPlacement="bottom" rowAlignment="none" translatesAutoresizingMaskIntoConstraints="NO" id="fhS-ed-gPi">
@@ -43,6 +44,7 @@
                             <gridRow rowAlignment="firstBaseline" id="mx-row-001"/>
                             <gridRow rowAlignment="firstBaseline" id="fp-row-001"/>
                             <gridRow rowAlignment="firstBaseline" id="pac-row-001"/>
+                            <gridRow rowAlignment="firstBaseline" id="sp-row-001"/>
                         </rows>
                         <columns>
                             <gridColumn xPlacement="trailing" id="SwQ-Kz-8BL"/>
@@ -261,6 +263,17 @@
                                 </button>
                             </gridCell>
                             <gridCell row="pac-row-001" column="L2g-Pd-kyh" id="pac-c3-001"/>
+                            <gridCell row="sp-row-001" column="SwQ-Kz-8BL" id="sp-c1-001"/>
+                            <gridCell row="sp-row-001" column="WUf-1y-4w5" id="sp-c2-001">
+                                <button key="contentView" translatesAutoresizingMaskIntoConstraints="NO" id="sp-btn-001">
+                                    <rect key="frame" x="84" y="-136" width="260" height="18"/>
+                                    <buttonCell key="cell" type="check" title="Spotlight mode (dim other windows)" bezelStyle="regularSquare" imagePosition="left" id="sp-cell-001"/>
+                                    <connections>
+                                        <action selector="spotlightModeChanged:" target="-2" id="sp-act-001"/>
+                                    </connections>
+                                </button>
+                            </gridCell>
+                            <gridCell row="sp-row-001" column="L2g-Pd-kyh" id="sp-c3-001"/>
                         </gridCells>
                     </gridView>
                     <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="ea-lbl-001">

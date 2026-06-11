@@ -78,9 +78,6 @@ conditional cast would make it crash-proof.
 
 - **Party mode** 🌈. Slowly cycle the border hue. Zero practical value,
   maximal joy, perfectly on-brand for a self-described satire app.
-- **Spotlight mode.** Instead of a border, dim everything *except* the
-  focused window (one translucent black window per screen with a cut-out
-  path). The inverse-Alan.
 - **"Find my window".** A global hotkey that flashes the border three
   times; spiritual cousin of shake-to-find-cursor.
 
