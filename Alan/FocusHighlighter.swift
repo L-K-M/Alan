@@ -458,6 +458,27 @@ class FocusHighlighter {
         return elementAttribute(appElement, kAXFocusedWindowAttribute as String)
     }
 
+    // Last resort of the window resolution: climb the parent chain until
+    // something window-like turns up. Patchy accessibility trees sometimes
+    // omit AXWindow and AXTopLevelUIElement on descendants while the chain
+    // of AXParents still reaches the window. Capped, because every hop is
+    // an IPC round-trip into the focused app and a malformed tree could
+    // even cycle; the application element at the top has no parent, so
+    // well-formed trees exit early on their own.
+    private func nearestWindowLikeAncestor(of element: AXUIElement) -> AXUIElement? {
+        var current = element
+        for _ in 0..<25 {
+            if isWindowLike(current) {
+                return current
+            }
+            guard let parent = elementAttribute(current, kAXParentAttribute as String) else {
+                return nil
+            }
+            current = parent
+        }
+        return nil
+    }
+
     private func isWindowLike(_ element: AXUIElement) -> Bool {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &value) == .success,
@@ -490,9 +511,10 @@ class FocusHighlighter {
         // expose AXTopLevelUIElement instead, and the save/open panels live
         // in an out-of-process panel service — for those, the element's own
         // process (not the frontmost app, which is the host) knows its
-        // focused window. If nothing window-like can be found, draw nothing:
-        // a border hugging a text field or overrunning a dialog along some
-        // inner scroll area's frame is worse than no border for a moment.
+        // focused window. Failing all that, climb the parent chain. If
+        // nothing window-like turns up anywhere, draw nothing: a border
+        // hugging a text field or overrunning a dialog along some inner
+        // scroll area's frame is worse than no border for a moment.
         let targetElement: AXUIElement
         if let window = elementAttribute(element, kAXWindowAttribute as String) {
             targetElement = window
@@ -500,10 +522,10 @@ class FocusHighlighter {
             targetElement = topLevel
         } else if let focusedWindow = focusedWindowOfProcess(owning: element) {
             targetElement = focusedWindow
-        } else if isWindowLike(element) {
-            // Some apps report the bare window as the focused element when
-            // no control has focus; that one is fine to use directly.
-            targetElement = element
+        } else if let ancestor = nearestWindowLikeAncestor(of: element) {
+            // The walk starts at the element itself, so this also covers
+            // apps that report the bare window as the focused element.
+            targetElement = ancestor
         } else {
             return nil
         }
