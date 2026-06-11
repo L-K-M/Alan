@@ -25,15 +25,7 @@ at empirically to fix secondary-screen placement, so it stays — but if a
 report ever comes in of the border floating one screen height away on a
 stacked-monitor arrangement, this is why.
 
-### 2. Wide borders clip at the window edge
-`HighlightWindow.updateFrame` outsets the overlay window by a fixed 2 pt,
-but the stroke is centered on a path inset by the `inset` preference (1–20)
-with a width of up to 20. Whenever `width / 2 > inset + 2` (e.g. width 20,
-inset 1 — both within the allowed ranges) the outer half of the stroke is
-clipped flat by the window bounds. The expansion should be derived from the
-configured width and inset rather than hard-coded.
-
-### 3. `NSColor.toHex` can't encode its own defaults
+### 2. `NSColor.toHex` can't encode its own defaults
 `toHex` reads `cgColor.components` directly and bails when there are fewer
 than 3 — which is the case for the default colors (`NSColor.black`/`.white`
 are grayscale: 2 components). Currently moot, since `toHex` and
@@ -41,7 +33,7 @@ are grayscale: 2 components). Currently moot, since `toHex` and
 hex color prefs. Convert via `usingColorSpace(.sRGB)` first, or delete
 both.
 
-### 4. Force-casts in the AX plumbing
+### 3. Force-casts in the AX plumbing
 `focusedElement as! AXUIElement?` and `cfValue as! AXValue` in
 `FocusHighlighter` would crash if an attribute ever came back as an
 unexpected type, and AX is exactly the kind of API that returns surprises.
