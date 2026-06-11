@@ -279,9 +279,22 @@ class FocusHighlighter {
 
         let cocoaFrame = cocoaRect(fromAXRect: axFrame)
 
+        // Native full-screen windows never get a border: nothing else is
+        // visible on their Space to tell focus apart from. Split View tiles
+        // also report AXFullScreen, so only windows that actually cover the
+        // screen are skipped — tiled windows keep their border.
+        if isFullScreen(windowElement), windowFillsScreen(cocoaFrame) {
+            if highlightVisible {
+                hideHighlight()
+                lastFrame = nil
+            }
+            lastFocusedWindow = nil
+            return
+        }
+
         // A window that fills its whole screen doesn't need a border to be
-        // found, so optionally skip it. This covers zoomed/"maximized"
-        // windows as well as native full-screen ones.
+        // found, so optionally skip it. With full screen handled above, this
+        // governs zoomed/"maximized" windows.
         if UserDefaults.standard.bool(forKey: Key.hideBorderWhenMaximized), windowFillsScreen(cocoaFrame) {
             if highlightVisible {
                 hideHighlight()
@@ -416,6 +429,66 @@ class FocusHighlighter {
         return frame.contains(target)
     }
 
+    // Native full screen is reported through the window's AXFullScreen
+    // attribute; there is no public constant for it, the raw string is the
+    // documented value. Anything but a readable true means "not full screen".
+    private func isFullScreen(_ window: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(window, "AXFullScreen" as CFString, &value)
+        guard err == .success,
+              let value,
+              CFGetTypeID(value) == CFBooleanGetTypeID()
+        else { return false }
+        return CFBooleanGetValue((value as! CFBoolean))
+    }
+
+    private func elementAttribute(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXUIElementGetTypeID()
+        else { return nil }
+        return (value as! AXUIElement)
+    }
+
+    private func focusedWindowOfProcess(owning element: AXUIElement) -> AXUIElement? {
+        var pid: pid_t = 0
+        guard AXUIElementGetPid(element, &pid) == .success, pid > 0 else { return nil }
+        let appElement = AXUIElementCreateApplication(pid)
+        return elementAttribute(appElement, kAXFocusedWindowAttribute as String)
+    }
+
+    // Last resort of the window resolution: climb the parent chain until
+    // something window-like turns up. Patchy accessibility trees sometimes
+    // omit AXWindow and AXTopLevelUIElement on descendants while the chain
+    // of AXParents still reaches the window. Capped, because every hop is
+    // an IPC round-trip into the focused app and a malformed tree could
+    // even cycle; the application element at the top has no parent, so
+    // well-formed trees exit early on their own.
+    private func nearestWindowLikeAncestor(of element: AXUIElement) -> AXUIElement? {
+        var current = element
+        for _ in 0..<25 {
+            if isWindowLike(current) {
+                return current
+            }
+            guard let parent = elementAttribute(current, kAXParentAttribute as String) else {
+                return nil
+            }
+            current = parent
+        }
+        return nil
+    }
+
+    private func isWindowLike(_ element: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &value) == .success,
+              let role = value as? String
+        else { return false }
+        return role == kAXWindowRole as String
+            || role == kAXSheetRole as String
+            || role == kAXDrawerRole as String
+    }
+
     // Hello, darkness, my old friend. I'm still really bad at this API.
     private func currentFocusedWindow() -> (element: AXUIElement, frame: CGRect)? {
         var focusedElement: CFTypeRef?
@@ -433,21 +506,28 @@ class FocusHighlighter {
         }
         let element = focusedElement as! AXUIElement
 
-        // If focus is a child, ask for its window
-        var windowElement: CFTypeRef?
-        let windowErr = AXUIElementCopyAttributeValue(
-            element,
-            kAXWindowAttribute as CFString,
-            &windowElement
-        )
-
+        // If focus is a child element, resolve the window containing it.
+        // AXWindow is the direct answer when present. Sheets and drawers
+        // expose AXTopLevelUIElement instead, and the save/open panels live
+        // in an out-of-process panel service — for those, the element's own
+        // process (not the frontmost app, which is the host) knows its
+        // focused window. Failing all that, climb the parent chain. If
+        // nothing window-like turns up anywhere, draw nothing: a border
+        // hugging a text field or overrunning a dialog along some inner
+        // scroll area's frame is worse than no border for a moment.
         let targetElement: AXUIElement
-        if windowErr == .success,
-           let windowElement,
-           CFGetTypeID(windowElement) == AXUIElementGetTypeID() {
-            targetElement = (windowElement as! AXUIElement)
+        if let window = elementAttribute(element, kAXWindowAttribute as String) {
+            targetElement = window
+        } else if let topLevel = elementAttribute(element, kAXTopLevelUIElementAttribute as String) {
+            targetElement = topLevel
+        } else if let focusedWindow = focusedWindowOfProcess(owning: element) {
+            targetElement = focusedWindow
+        } else if let ancestor = nearestWindowLikeAncestor(of: element) {
+            // The walk starts at the element itself, so this also covers
+            // apps that report the bare window as the focused element.
+            targetElement = ancestor
         } else {
-            targetElement = element
+            return nil
         }
 
         var frameValue: CFTypeRef?
