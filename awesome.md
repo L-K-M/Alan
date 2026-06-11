@@ -84,10 +84,6 @@ conditional cast would make it crash-proof.
 
 ## Ideas — novel, delightful, quirky
 
-- **Rounded corners.** macOS windows have had rounded corners since
-  approximately the Mesozoic; `NSBezierPath(roundedRect:xRadius:yRadius:)`
-  with ~10 pt radius (a hidden pref for the Rectangle Purists) would hug
-  modern windows instead of poking square corners past them.
 - **Focus pulse.** Flash or briefly thicken the border when focus
   *changes*, then settle — helps the app's whole reason to exist: noticing
   where keyboard input goes.

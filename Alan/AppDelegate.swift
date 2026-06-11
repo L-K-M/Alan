@@ -24,6 +24,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.register(defaults: [
             Key.width: 5,
             Key.inset: 4,
+            Key.cornerRadius: 0,
             Key.hideDock: false
         ])
 
