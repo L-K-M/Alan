@@ -25,6 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Key.width: 5,
             Key.inset: 4,
             Key.cornerRadius: 0,
+            Key.showFrameWhileDragging: true,
             Key.hideBorderWhenMaximized: false,
             Key.focusPulse: false,
             Key.perAppColors: false,

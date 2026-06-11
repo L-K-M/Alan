@@ -19,7 +19,7 @@ class FocusHighlighter {
     private var highlightVisible = false
     private var lastFrame: CGRect?
     private var lastFocusedWindow: AXUIElement?
-    private var frameIsDrawn = false;
+    private var frameIsDrawn = false
     private var drawFrame = true
     private var disableFrameTimer: Timer?
 
@@ -33,6 +33,7 @@ class FocusHighlighter {
     private var hotKeyEventHandler: EventHandlerRef?
 
     private var workspaceObserver: NSObjectProtocol?
+    private var defaultsObserver: NSObjectProtocol?
     private var appearanceObservation: NSKeyValueObservation?
     private var dragMonitor: Any?
     private var dragTimer: Timer?
@@ -41,6 +42,17 @@ class FocusHighlighter {
         updateHotkeyRegistration()
         refresh()
         observeFrontmostApp()
+
+        // Observed here rather than in the prefs controller, so settings
+        // changed from Terminal via `defaults write` apply immediately even
+        // if the Preferences window has never been opened.
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.forceUpdate()
+        }
 
         // Re-attach the AX observer whenever another app becomes frontmost
         workspaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -314,16 +326,15 @@ class FocusHighlighter {
 
         if lastFrame != cocoaFrame {
             lastFrame = cocoaFrame
-            frameIsDrawn = false;
+            frameIsDrawn = false
 
-            let showFrameWhileDragging = UserDefaults.standard.object(forKey: Key.showFrameWhileDragging) as? Bool ?? true
-            if !showFrameWhileDragging {
+            if !UserDefaults.standard.bool(forKey: Key.showFrameWhileDragging) {
                 temporarilyDisableFrameDrawing()
-                return;
+                return
             }
         }
         if !frameIsDrawn && drawFrame {
-            frameIsDrawn = true;
+            frameIsDrawn = true
             showHighlight(at: cocoaFrame)
             // The pulse animates the border, which spotlight mode replaces.
             if focusChanged && UserDefaults.standard.bool(forKey: Key.focusPulse),

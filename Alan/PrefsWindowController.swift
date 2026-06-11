@@ -31,7 +31,7 @@ class PrefsWindowController: NSWindowController {
         lightModeColorWell.color = UserDefaults.standard.color(forKey: Key.lightMode) ?? Defaults.lightModeColor
         darkModeColorWell.color = UserDefaults.standard.color(forKey: Key.darkMode) ?? Defaults.darkModeColor
 
-        let showFrameWhileDragging = UserDefaults.standard.object(forKey: Key.showFrameWhileDragging) as? Bool ?? true
+        let showFrameWhileDragging = UserDefaults.standard.bool(forKey: Key.showFrameWhileDragging)
         showFrameWhileDraggingCheckbox.state = showFrameWhileDragging ? .on : .off
 
         let glowingBorder = UserDefaults.standard.bool(forKey: Key.glowingBorder)
@@ -62,7 +62,6 @@ class PrefsWindowController: NSWindowController {
         excludedAppsTableView?.delegate = self
         excludedAppsTableView?.dataSource = self
 
-        NotificationCenter.default.addObserver(self, selector: #selector(PrefsWindowController.userDefaultsChanged), name: UserDefaults.didChangeNotification, object: nil)
     }
     
     @IBAction func lightModeChanged(_ sender: NSColorWell) {
@@ -142,9 +141,6 @@ class PrefsWindowController: NSWindowController {
         excludedAppsTableView.reloadData()
     }
 
-    @objc func userDefaultsChanged() {
-        FocusHighlighter.shared.forceUpdate()
-    }
 }
 
 extension PrefsWindowController: NSTableViewDelegate, NSTableViewDataSource {
