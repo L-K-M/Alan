@@ -52,6 +52,12 @@ class FocusHighlighter {
     private var dragTimer: Timer?
 
     func start() {
+        // Bound every AX call: the default messaging timeout is several
+        // seconds per call, which can wedge the main thread behind a busy
+        // or hung process. Set on the system-wide element, this applies to
+        // all of the process's AX messaging.
+        AXUIElementSetMessagingTimeout(systemWideElement, 0.5)
+
         updateHotkeyRegistration()
         updateShakeMonitor()
         refresh()
@@ -335,6 +341,40 @@ class FocusHighlighter {
         // While the flash is running it owns the highlight window.
         guard flashTimer == nil else { return }
 
+        // Never point the AX machinery at ourselves. We know where our own
+        // windows are without asking, and — worse — when our open/save
+        // panel is up, the focused element belongs to the panel service,
+        // which blocks on Alan over XPC while Alan blocks on its AX
+        // replies: both processes froze. (The panel also writes its state
+        // into our defaults, retriggering refresh continuously.)
+        if let frontmostApp = NSWorkspace.shared.frontmostApplication,
+           frontmostApp.processIdentifier == ProcessInfo.processInfo.processIdentifier {
+            guard let window = NSApp.keyWindow ?? NSApp.mainWindow,
+                  window.isVisible,
+                  !(window is HighlightWindow),
+                  !(window is DimWindow)
+            else {
+                if highlightVisible {
+                    hideHighlight()
+                    lastFrame = nil
+                }
+                lastFocusedWindow = nil
+                return
+            }
+
+            lastFocusedWindow = nil
+            let cocoaFrame = window.frame
+            if lastFrame != cocoaFrame {
+                lastFrame = cocoaFrame
+                frameIsDrawn = false
+            }
+            if !frameIsDrawn && drawFrame {
+                frameIsDrawn = true
+                showHighlight(at: cocoaFrame)
+            }
+            return
+        }
+
         // Check if the frontmost app is excluded
         if let frontmostApp = NSWorkspace.shared.frontmostApplication,
            let bundleIdentifier = frontmostApp.bundleIdentifier {
@@ -519,9 +559,15 @@ class FocusHighlighter {
     // closure receives each intermediate rect and finally the target with
     // finished == true.
     private func makeGlideTimer(from: CGRect, to target: CGRect, apply: @escaping (CGRect, Bool) -> Void) -> Timer {
+        var duration = UserDefaults.standard.double(forKey: Key.moveAnimationDuration)
+        if duration <= 0 {
+            duration = Defaults.moveAnimationDuration
+        }
+        duration = min(1.0, max(0.05, duration))
+
         let start = Date().timeIntervalSinceReferenceDate
         let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { timer in
-            let t = (Date().timeIntervalSinceReferenceDate - start) / Defaults.moveAnimationDuration
+            let t = (Date().timeIntervalSinceReferenceDate - start) / duration
             if t >= 1 {
                 timer.invalidate()
                 apply(target, true)

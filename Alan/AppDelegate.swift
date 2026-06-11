@@ -35,6 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Key.shakeToFind: false,
             Key.spotlightDimLevel: Defaults.spotlightDimAlpha,
             Key.animateMovement: true,
+            Key.moveAnimationDuration: Defaults.moveAnimationDuration,
             Key.partyMode: false,
             Key.hideDock: false
         ])

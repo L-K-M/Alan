@@ -29,6 +29,8 @@ class PrefsWindowController: NSWindowController {
     private let focusPulseCheckbox = NSButton(checkboxWithTitle: "Pulse border on focus change", target: nil, action: nil)
     private let spotlightModeCheckbox = NSButton(checkboxWithTitle: "Spotlight mode (dim other windows)", target: nil, action: nil)
     private let animateMovementCheckbox = NSButton(checkboxWithTitle: "Animate movement between windows", target: nil, action: nil)
+    private let glideDurationSlider = NSSlider(value: Defaults.moveAnimationDuration, minValue: 0.1, maxValue: 0.75, target: nil, action: nil)
+    private let glideDurationLabel = NSTextField(labelWithString: "0.25 s")
     private let dimLevelSlider = NSSlider(value: Defaults.spotlightDimAlpha, minValue: 0.1, maxValue: 0.9, target: nil, action: nil)
     private let dimLevelLabel = NSTextField(labelWithString: "45%")
     private let findMyWindowCheckbox = NSButton(checkboxWithTitle: "“Find my window” hotkey — flashes the border", target: nil, action: nil)
@@ -174,6 +176,20 @@ class PrefsWindowController: NSWindowController {
         setUp(shakeToFindCheckbox, action: #selector(shakeToFindChanged(_:)))
         setUp(launchAtLoginCheckbox, action: #selector(launchAtLoginChanged(_:)))
 
+        glideDurationSlider.translatesAutoresizingMaskIntoConstraints = false
+        glideDurationSlider.isContinuous = true
+        glideDurationSlider.bind(
+            .value,
+            to: NSUserDefaultsController.shared,
+            withKeyPath: "values.\(Key.moveAnimationDuration)",
+            options: [.continuouslyUpdatesValue: true]
+        )
+        let glideRow = indentedRow([makeLabel("Duration:"), glideDurationSlider, glideDurationLabel])
+        NSLayoutConstraint.activate([
+            glideDurationSlider.widthAnchor.constraint(equalToConstant: 180),
+            glideDurationLabel.widthAnchor.constraint(equalToConstant: 50)
+        ])
+
         dimLevelSlider.translatesAutoresizingMaskIntoConstraints = false
         dimLevelSlider.isContinuous = true
         dimLevelSlider.bind(
@@ -202,6 +218,7 @@ class PrefsWindowController: NSWindowController {
             hideWhenMaximizedCheckbox,
             focusPulseCheckbox,
             animateMovementCheckbox,
+            glideRow,
             spotlightModeCheckbox,
             dimRow,
             findMyWindowCheckbox,
@@ -370,6 +387,12 @@ class PrefsWindowController: NSWindowController {
         launchAtLoginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
 
         animateMovementCheckbox.state = defaults.bool(forKey: Key.animateMovement) ? .on : .off
+        glideDurationSlider.isEnabled = defaults.bool(forKey: Key.animateMovement)
+        var glideDuration = defaults.double(forKey: Key.moveAnimationDuration)
+        if glideDuration <= 0 {
+            glideDuration = Defaults.moveAnimationDuration
+        }
+        glideDurationLabel.stringValue = String(format: "%.2f s", glideDuration)
 
         let spotlightOn = defaults.bool(forKey: Key.spotlightMode)
         dimLevelSlider.isEnabled = spotlightOn
