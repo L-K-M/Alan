@@ -279,9 +279,22 @@ class FocusHighlighter {
 
         let cocoaFrame = cocoaRect(fromAXRect: axFrame)
 
+        // Native full-screen windows never get a border: nothing else is
+        // visible on their Space to tell focus apart from. Split View tiles
+        // also report AXFullScreen, so only windows that actually cover the
+        // screen are skipped — tiled windows keep their border.
+        if isFullScreen(windowElement), windowFillsScreen(cocoaFrame) {
+            if highlightVisible {
+                hideHighlight()
+                lastFrame = nil
+            }
+            lastFocusedWindow = nil
+            return
+        }
+
         // A window that fills its whole screen doesn't need a border to be
-        // found, so optionally skip it. This covers zoomed/"maximized"
-        // windows as well as native full-screen ones.
+        // found, so optionally skip it. With full screen handled above, this
+        // governs zoomed/"maximized" windows.
         if UserDefaults.standard.bool(forKey: Key.hideBorderWhenMaximized), windowFillsScreen(cocoaFrame) {
             if highlightVisible {
                 hideHighlight()
@@ -416,6 +429,32 @@ class FocusHighlighter {
         return frame.contains(target)
     }
 
+    // Native full screen is reported through the window's AXFullScreen
+    // attribute; there is no public constant for it, the raw string is the
+    // documented value. Anything but a readable true means "not full screen".
+    private func isFullScreen(_ window: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(window, "AXFullScreen" as CFString, &value)
+        guard err == .success,
+              let value,
+              CFGetTypeID(value) == CFBooleanGetTypeID()
+        else { return false }
+        return CFBooleanGetValue((value as! CFBoolean))
+    }
+
+    private func frontmostAppFocusedWindow() -> AXUIElement? {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+
+        var window: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &window)
+        guard err == .success,
+              let window,
+              CFGetTypeID(window) == AXUIElementGetTypeID()
+        else { return nil }
+        return (window as! AXUIElement)
+    }
+
     // Hello, darkness, my old friend. I'm still really bad at this API.
     private func currentFocusedWindow() -> (element: AXUIElement, frame: CGRect)? {
         var focusedElement: CFTypeRef?
@@ -446,6 +485,13 @@ class FocusHighlighter {
            let windowElement,
            CFGetTypeID(windowElement) == AXUIElementGetTypeID() {
             targetElement = (windowElement as! AXUIElement)
+        } else if let appWindow = frontmostAppFocusedWindow() {
+            // Some apps (Chrome in native full screen, notably) don't expose
+            // AXWindow on the focused element. The app's focused window is a
+            // better fallback than the element itself, whose frame can be an
+            // inner content area — that put the border around the web page
+            // instead of the window.
+            targetElement = appWindow
         } else {
             targetElement = element
         }

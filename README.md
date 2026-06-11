@@ -26,8 +26,9 @@ that, this fork adds:
   optional glow on the border itself.
 - A setting to hide the border while a window is being dragged (it
   returns once the window settles), and one to hide it when a window
-  fills its screen — maximized or full-screen, judged against the
-  display the window is on, so multi-monitor setups work.
+  fills its screen — judged against the display the window is on, so
+  multi-monitor setups work. Windows in native full-screen mode never
+  get a border.
 - An excluded-apps list, for apps that should never get a border.
 - An optional focus pulse: the border briefly thickens when focus
   changes, then settles.
@@ -77,8 +78,9 @@ Or build it yourself: open `Alan.xcodeproj` in Xcode and hit Run.
 - **Stronger Shadow** and **Glowing Border**
 - **Show border while dragging** — untick to hide the border while a
   window is moving; it reappears once the window has settled
-- **Hide border when window fills the screen** — skips maximized and
-  full-screen windows, decided per display
+- **Hide border when window fills the screen** — skips maximized
+  windows, decided per display (native full-screen windows are always
+  skipped, setting or no setting)
 - **Pulse border on focus change** — briefly thickens the border when
   focus moves, then settles
 - **Per-app border colors** — each app gets a stable hue hashed from its
