@@ -208,15 +208,16 @@ class FocusHighlighter {
 }
 
 private func cocoaRect(fromAXRect axRect: CGRect) -> CGRect {
-    // Find the maximum Y coordinate across all screens in Cocoa space
-    // This represents the total height of the entire screen arrangement
-    // AX coordinates start from y=0 at the top of the topmost screen
-    // Cocoa coordinates start from y=0 at the bottom of the bottommost screen
-    // So we need the total height to properly flip the Y coordinate
-    let maxY = NSScreen.screens.map { $0.frame.maxY }.max() ?? 0
+    // AX frames are in global top-left coordinates: the origin is the
+    // top-left corner of the primary screen (screens[0], the one with the
+    // menu bar) and y grows downward. Cocoa's origin is the bottom-left
+    // corner of that same screen, with y growing upward. Both spaces are
+    // anchored to the primary screen, so the flip uses its height alone;
+    // the rest of the monitor arrangement doesn't factor in.
+    let primaryScreenHeight = NSScreen.screens.first?.frame.height ?? 0
 
     var rect = axRect
-    rect.origin.y = maxY - (axRect.origin.y + axRect.height)
+    rect.origin.y = primaryScreenHeight - (axRect.origin.y + axRect.height)
 
     return rect
 }
