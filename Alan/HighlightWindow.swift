@@ -184,3 +184,64 @@ class HighlightView: NSView {
         path.stroke()
     }
 }
+
+// Spotlight mode: one of these per screen dims everything except the
+// focused window, which stays visible through a cut-out.
+class DimWindow: NSWindow {
+
+    init() {
+        super.init(
+            contentRect: .zero,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+
+        self.isOpaque = false
+        self.hasShadow = false
+        self.backgroundColor = .clear
+        self.ignoresMouseEvents = true
+        self.level = .statusBar
+        self.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle]
+        self.isReleasedWhenClosed = false
+
+        self.contentView = DimView(frame: .zero)
+    }
+
+    // cutout is in global Cocoa coordinates; nil dims the whole screen.
+    func update(screenFrame: CGRect, cutout: CGRect?) {
+        setFrame(screenFrame, display: true)
+        if let view = contentView as? DimView {
+            view.cutout = cutout?.offsetBy(dx: -screenFrame.minX, dy: -screenFrame.minY)
+        }
+        contentView?.setNeedsDisplay(.infinite)
+        orderFrontRegardless()
+    }
+}
+
+class DimView: NSView {
+
+    // The focused window's frame in this view's coordinates.
+    var cutout: CGRect?
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        // Filling screen + cut-out with the even-odd rule dims everything
+        // except the cut-out, without any compositing tricks.
+        let path = NSBezierPath(rect: bounds)
+        if let cutout {
+            var cornerRadius = UserDefaults.standard.integer(forKey: Key.cornerRadius)
+            cornerRadius = max(0, min(50, cornerRadius))
+            if cornerRadius > 0 {
+                path.append(NSBezierPath(roundedRect: cutout, xRadius: CGFloat(cornerRadius), yRadius: CGFloat(cornerRadius)))
+            } else {
+                path.append(NSBezierPath(rect: cutout))
+            }
+            path.windingRule = .evenOdd
+        }
+
+        NSColor.black.withAlphaComponent(Defaults.spotlightDimAlpha).setFill()
+        path.fill()
+    }
+}

@@ -18,6 +18,7 @@ class PrefsWindowController: NSWindowController {
     @IBOutlet weak var hideBorderWhenMaximizedCheckbox: NSButton!
     @IBOutlet weak var focusPulseCheckbox: NSButton!
     @IBOutlet weak var perAppColorsCheckbox: NSButton!
+    @IBOutlet weak var spotlightModeCheckbox: NSButton!
     @IBOutlet weak var excludedAppsTableView: NSTableView!
 
     private var excludedApps: [String] = []
@@ -45,6 +46,9 @@ class PrefsWindowController: NSWindowController {
 
         let perAppColors = UserDefaults.standard.bool(forKey: Key.perAppColors)
         perAppColorsCheckbox.state = perAppColors ? .on : .off
+
+        let spotlightMode = UserDefaults.standard.bool(forKey: Key.spotlightMode)
+        spotlightModeCheckbox.state = spotlightMode ? .on : .off
 
         excludedApps = UserDefaults.standard.stringArray(forKey: Key.excludedApps) ?? []
         excludedAppsTableView?.delegate = self
@@ -83,6 +87,10 @@ class PrefsWindowController: NSWindowController {
 
     @IBAction func perAppColorsChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.perAppColors)
+    }
+
+    @IBAction func spotlightModeChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.spotlightMode)
     }
 
     @IBAction func addExcludedApp(_ sender: Any) {

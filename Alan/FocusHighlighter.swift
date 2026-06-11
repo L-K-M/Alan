@@ -14,6 +14,8 @@ class FocusHighlighter {
 
     private let systemWideElement = AXUIElementCreateSystemWide()
     private let highlightWindow = HighlightWindow()
+    private var dimWindows: [DimWindow] = []
+    private var highlightVisible = false
     private var lastFrame: CGRect?
     private var lastFocusedWindow: AXUIElement?
     private var frameIsDrawn = false;
@@ -152,8 +154,8 @@ class FocusHighlighter {
 
             let excludedApps = UserDefaults.standard.stringArray(forKey: Key.excludedApps) ?? []
             if excludedApps.contains(bundleIdentifier) {
-                if highlightWindow.isVisible {
-                    highlightWindow.orderOut(nil)
+                if highlightVisible {
+                    hideHighlight()
                     lastFrame = nil
                 }
                 lastFocusedWindow = nil
@@ -162,8 +164,8 @@ class FocusHighlighter {
         }
 
         guard let (windowElement, axFrame) = currentFocusedWindow() else {
-            if highlightWindow.isVisible {
-                highlightWindow.orderOut(nil)
+            if highlightVisible {
+                hideHighlight()
                 lastFrame = nil
             }
             lastFocusedWindow = nil
@@ -176,8 +178,8 @@ class FocusHighlighter {
         // found, so optionally skip it. This covers zoomed/"maximized"
         // windows as well as native full-screen ones.
         if UserDefaults.standard.bool(forKey: Key.hideBorderWhenMaximized), windowFillsScreen(cocoaFrame) {
-            if highlightWindow.isVisible {
-                highlightWindow.orderOut(nil)
+            if highlightVisible {
+                hideHighlight()
                 lastFrame = nil
             }
             lastFocusedWindow = nil
@@ -204,10 +206,58 @@ class FocusHighlighter {
         }
         if !frameIsDrawn && drawFrame {
             frameIsDrawn = true;
-            highlightWindow.updateFrame(to: cocoaFrame)
-            if focusChanged && UserDefaults.standard.bool(forKey: Key.focusPulse) {
+            showHighlight(at: cocoaFrame)
+            // The pulse animates the border, which spotlight mode replaces.
+            if focusChanged && UserDefaults.standard.bool(forKey: Key.focusPulse),
+               !UserDefaults.standard.bool(forKey: Key.spotlightMode) {
                 highlightWindow.pulse()
             }
+        }
+    }
+
+    // MARK: - Showing and hiding
+
+    // In spotlight mode the border is replaced by per-screen dimming
+    // windows with the focused window cut out; otherwise it's the border.
+    private func showHighlight(at frame: CGRect) {
+        if UserDefaults.standard.bool(forKey: Key.spotlightMode) {
+            highlightWindow.orderOut(nil)
+            updateDimWindows(cutout: frame)
+        } else {
+            hideDimWindows()
+            highlightWindow.updateFrame(to: frame)
+        }
+        highlightVisible = true
+    }
+
+    private func hideHighlight() {
+        highlightWindow.orderOut(nil)
+        hideDimWindows()
+        highlightVisible = false
+    }
+
+    private func updateDimWindows(cutout: CGRect) {
+        let screens = NSScreen.screens
+
+        // Reconcile the window pool with the current screen arrangement.
+        while dimWindows.count < screens.count {
+            dimWindows.append(DimWindow())
+        }
+        while dimWindows.count > screens.count {
+            dimWindows.removeLast().orderOut(nil)
+        }
+
+        for (window, screen) in zip(dimWindows, screens) {
+            // Windows spanning displays get a cut-out on every screen they
+            // touch; screens the window isn't on are dimmed entirely.
+            let local = cutout.intersects(screen.frame) ? cutout : nil
+            window.update(screenFrame: screen.frame, cutout: local)
+        }
+    }
+
+    private func hideDimWindows() {
+        for window in dimWindows {
+            window.orderOut(nil)
         }
     }
 
@@ -218,7 +268,7 @@ class FocusHighlighter {
 
     private func temporarilyDisableFrameDrawing() {
         drawFrame = false
-        highlightWindow.orderOut(nil)
+        hideHighlight()
         disableFrameTimer?.invalidate()
         // Nothing re-runs refresh() on its own once the window stops moving
         // (tracking is event-driven, not polled), so the timer has to do it.
