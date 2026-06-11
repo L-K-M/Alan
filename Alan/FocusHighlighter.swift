@@ -451,8 +451,9 @@ class FocusHighlighter {
     // position, so a window dragged at 30 Hz is chased smoothly.
     private func moveSpotlight(to target: CGRect) {
         // While a drag is tracked at 30 Hz the updates themselves are the
-        // animation; easing on top would only add lag.
-        if dragTimer != nil {
+        // animation; easing on top would only add lag. And the whole glide
+        // is optional.
+        if dragTimer != nil || !UserDefaults.standard.bool(forKey: Key.animateSpotlight) {
             spotlightAnimationTimer?.invalidate()
             spotlightAnimationTimer = nil
             displayedCutout = target

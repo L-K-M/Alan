@@ -34,6 +34,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Key.findMyWindowShortcutLabel: Defaults.findMyWindowDefaultLabel,
             Key.shakeToFind: false,
             Key.spotlightDimLevel: Defaults.spotlightDimAlpha,
+            Key.animateSpotlight: true,
             Key.partyMode: false,
             Key.hideDock: false
         ])

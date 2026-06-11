@@ -46,6 +46,7 @@ struct Key {
     static let findMyWindowHotkey = "findMyWindowHotkey"
     static let partyMode = "partyMode"
     static let spotlightDimLevel = "spotlightDimLevel"
+    static let animateSpotlight = "animateSpotlight"
     static let findMyWindowKeyCode = "findMyWindowKeyCode"
     static let findMyWindowModifiers = "findMyWindowModifiers"
     static let findMyWindowShortcutLabel = "findMyWindowShortcutLabel"
