@@ -438,7 +438,11 @@ class FocusHighlighter {
         highlightVisible = false
         spotlightAnimationTimer?.invalidate()
         spotlightAnimationTimer = nil
-        displayedCutout = nil
+        // displayedCutout is deliberately kept: app switches routinely pass
+        // through a transient "no focused window" moment that hides the
+        // spotlight for a frame, and forgetting the position here meant the
+        // next reveal had nothing to animate from — it snapped. Remembering
+        // it lets the stage light swing over from wherever it last was.
     }
 
     // The cut-out glides from where it is to the new window over a few
@@ -446,6 +450,16 @@ class FocusHighlighter {
     // teleporting. Re-targeting mid-flight restarts from the current
     // position, so a window dragged at 30 Hz is chased smoothly.
     private func moveSpotlight(to target: CGRect) {
+        // While a drag is tracked at 30 Hz the updates themselves are the
+        // animation; easing on top would only add lag.
+        if dragTimer != nil {
+            spotlightAnimationTimer?.invalidate()
+            spotlightAnimationTimer = nil
+            displayedCutout = target
+            updateDimWindows(cutout: target)
+            return
+        }
+
         guard let from = displayedCutout, from != target else {
             // First reveal, or a redraw with an unchanged frame (settings
             // like the dim level still need the windows repainted).

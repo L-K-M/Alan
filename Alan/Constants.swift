@@ -16,7 +16,7 @@ struct Defaults {
     static let focusPulsePeak: CGFloat = 2.5
     static let spotlightDimAlpha: Double = 0.45
     static let partyModeCycleDuration: TimeInterval = 6
-    static let spotlightAnimationDuration: TimeInterval = 0.15
+    static let spotlightAnimationDuration: TimeInterval = 0.25
     static let shakeMinSwing: CGFloat = 12
     static let shakeWindow: TimeInterval = 0.7
     static let shakeReversalCount = 4
