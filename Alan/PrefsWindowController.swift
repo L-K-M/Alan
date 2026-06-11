@@ -6,109 +6,451 @@
 //
 
 import AppKit
+import Carbon.HIToolbox
+import ServiceManagement
 import UniformTypeIdentifiers
 
 class PrefsWindowController: NSWindowController {
-    
-    @IBOutlet weak var lightModeColorWell: NSColorWell!
-    @IBOutlet weak var darkModeColorWell: NSColorWell!
-    @IBOutlet weak var showFrameWhileDraggingCheckbox: NSButton!
-    @IBOutlet weak var glowingBorderCheckbox: NSButton!
-    @IBOutlet weak var strongerShadowCheckbox: NSButton!
-    @IBOutlet weak var hideBorderWhenMaximizedCheckbox: NSButton!
-    @IBOutlet weak var focusPulseCheckbox: NSButton!
-    @IBOutlet weak var perAppColorsCheckbox: NSButton!
-    @IBOutlet weak var spotlightModeCheckbox: NSButton!
-    @IBOutlet weak var findMyWindowHotkeyCheckbox: NSButton!
-    @IBOutlet weak var partyModeCheckbox: NSButton!
-    @IBOutlet weak var excludedAppsTableView: NSTableView!
 
+    // MARK: - Appearance tab controls
+
+    private let previewView = BorderPreviewView()
+    private let lightModeColorWell = NSColorWell()
+    private let darkModeColorWell = NSColorWell()
+    private let perAppColorsCheckbox = NSButton(checkboxWithTitle: "Per-app border colors", target: nil, action: nil)
+    private let glowingBorderCheckbox = NSButton(checkboxWithTitle: "Glowing border", target: nil, action: nil)
+    private let strongerShadowCheckbox = NSButton(checkboxWithTitle: "Stronger shadow", target: nil, action: nil)
+    private let partyModeCheckbox = NSButton(checkboxWithTitle: "Party mode 🌈", target: nil, action: nil)
+
+    // MARK: - Behavior tab controls
+
+    private let showWhileDraggingCheckbox = NSButton(checkboxWithTitle: "Show border while dragging", target: nil, action: nil)
+    private let hideWhenMaximizedCheckbox = NSButton(checkboxWithTitle: "Hide border when window fills the screen", target: nil, action: nil)
+    private let focusPulseCheckbox = NSButton(checkboxWithTitle: "Pulse border on focus change", target: nil, action: nil)
+    private let spotlightModeCheckbox = NSButton(checkboxWithTitle: "Spotlight mode (dim other windows)", target: nil, action: nil)
+    private let dimLevelSlider = NSSlider(value: Defaults.spotlightDimAlpha, minValue: 0.1, maxValue: 0.9, target: nil, action: nil)
+    private let dimLevelLabel = NSTextField(labelWithString: "45%")
+    private let findMyWindowCheckbox = NSButton(checkboxWithTitle: "“Find my window” hotkey — flashes the border", target: nil, action: nil)
+    private let shortcutRecorder = ShortcutRecorderButton()
+    private let shakeToFindCheckbox = NSButton(checkboxWithTitle: "Shake mouse to find window", target: nil, action: nil)
+    private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: "Launch Alan at login", target: nil, action: nil)
+
+    // MARK: - Excluded-apps tab controls
+
+    private let excludedAppsTableView = NSTableView()
     private var excludedApps: [String] = []
 
-    override func windowDidLoad() {
-        super.windowDidLoad()
+    // MARK: - Setup
 
+    convenience init() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 560),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Alan"
+        window.isReleasedWhenClosed = false
+        self.init(window: window)
+        window.center()
+
+        buildUI()
+        loadValues()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(defaultsChanged),
+            name: UserDefaults.didChangeNotification,
+            object: nil
+        )
+    }
+
+    private func buildUI() {
+        guard let contentView = window?.contentView else { return }
+
+        let tabView = NSTabView()
+        tabView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(tabView)
+        NSLayoutConstraint.activate([
+            tabView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
+            tabView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 12),
+            tabView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
+            tabView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12)
+        ])
+
+        let appearance = NSTabViewItem(identifier: "appearance")
+        appearance.label = "Appearance"
+        appearance.view = makeAppearanceTab()
+        tabView.addTabViewItem(appearance)
+
+        let behavior = NSTabViewItem(identifier: "behavior")
+        behavior.label = "Behavior"
+        behavior.view = makeBehaviorTab()
+        tabView.addTabViewItem(behavior)
+
+        let apps = NSTabViewItem(identifier: "apps")
+        apps.label = "Excluded Apps"
+        apps.view = makeExcludedAppsTab()
+        tabView.addTabViewItem(apps)
+    }
+
+    // MARK: Appearance tab
+
+    private func makeAppearanceTab() -> NSView {
+        let view = NSView()
+
+        previewView.translatesAutoresizingMaskIntoConstraints = false
+        previewView.wantsLayer = true
+        previewView.layer?.cornerRadius = 6
+        previewView.layer?.masksToBounds = true
+        view.addSubview(previewView)
+
+        let widthField = makeNumberField(boundTo: Key.width)
+        let widthStepper = makeStepper(boundTo: Key.width, min: 1, max: 20)
+        let insetField = makeNumberField(boundTo: Key.inset)
+        let insetStepper = makeStepper(boundTo: Key.inset, min: 1, max: 20)
+        let radiusField = makeNumberField(boundTo: Key.cornerRadius)
+        let radiusStepper = makeStepper(boundTo: Key.cornerRadius, min: 0, max: 50)
+
+        lightModeColorWell.target = self
+        lightModeColorWell.action = #selector(lightModeChanged(_:))
+        darkModeColorWell.target = self
+        darkModeColorWell.action = #selector(darkModeChanged(_:))
+        for well in [lightModeColorWell, darkModeColorWell] {
+            well.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                well.widthAnchor.constraint(equalToConstant: 44),
+                well.heightAnchor.constraint(equalToConstant: 24)
+            ])
+        }
+
+        setUp(perAppColorsCheckbox, action: #selector(perAppColorsChanged(_:)))
+        setUp(glowingBorderCheckbox, action: #selector(glowingBorderChanged(_:)))
+        setUp(strongerShadowCheckbox, action: #selector(strongerShadowChanged(_:)))
+        setUp(partyModeCheckbox, action: #selector(partyModeChanged(_:)))
+
+        let empty = NSGridCell.emptyContentView
+        let grid = NSGridView(views: [
+            [makeLabel("Border Width:"), widthField, widthStepper],
+            [makeLabel("Border Inset:"), insetField, insetStepper],
+            [makeLabel("Corner Radius:"), radiusField, radiusStepper],
+            [makeLabel("Light Mode:"), lightModeColorWell, empty],
+            [makeLabel("Dark Mode:"), darkModeColorWell, empty],
+            [empty, perAppColorsCheckbox, empty],
+            [empty, glowingBorderCheckbox, empty],
+            [empty, strongerShadowCheckbox, empty],
+            [empty, partyModeCheckbox, empty]
+        ])
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        grid.rowSpacing = 8
+        grid.columnSpacing = 8
+        grid.column(at: 0).xPlacement = .trailing
+        view.addSubview(grid)
+
+        NSLayoutConstraint.activate([
+            previewView.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
+            previewView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            previewView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            previewView.heightAnchor.constraint(equalToConstant: 150),
+            grid.topAnchor.constraint(equalTo: previewView.bottomAnchor, constant: 16),
+            grid.centerXAnchor.constraint(equalTo: view.centerXAnchor)
+        ])
+
+        return view
+    }
+
+    // MARK: Behavior tab
+
+    private func makeBehaviorTab() -> NSView {
+        let view = NSView()
+
+        setUp(showWhileDraggingCheckbox, action: #selector(showFrameWhileDraggingChanged(_:)))
+        setUp(hideWhenMaximizedCheckbox, action: #selector(hideBorderWhenMaximizedChanged(_:)))
+        setUp(focusPulseCheckbox, action: #selector(focusPulseChanged(_:)))
+        setUp(spotlightModeCheckbox, action: #selector(spotlightModeChanged(_:)))
+        setUp(findMyWindowCheckbox, action: #selector(findMyWindowHotkeyChanged(_:)))
+        setUp(shakeToFindCheckbox, action: #selector(shakeToFindChanged(_:)))
+        setUp(launchAtLoginCheckbox, action: #selector(launchAtLoginChanged(_:)))
+
+        dimLevelSlider.translatesAutoresizingMaskIntoConstraints = false
+        dimLevelSlider.isContinuous = true
+        dimLevelSlider.bind(
+            .value,
+            to: NSUserDefaultsController.shared,
+            withKeyPath: "values.\(Key.spotlightDimLevel)",
+            options: [.continuouslyUpdatesValue: true]
+        )
+        let dimRow = indentedRow([makeLabel("Dim level:"), dimLevelSlider, dimLevelLabel])
+        NSLayoutConstraint.activate([
+            dimLevelSlider.widthAnchor.constraint(equalToConstant: 180),
+            dimLevelLabel.widthAnchor.constraint(equalToConstant: 44)
+        ])
+
+        shortcutRecorder.translatesAutoresizingMaskIntoConstraints = false
+        let shortcutRow = indentedRow([makeLabel("Shortcut:"), shortcutRecorder])
+        NSLayoutConstraint.activate([
+            shortcutRecorder.widthAnchor.constraint(greaterThanOrEqualToConstant: 130)
+        ])
+
+        let divider = NSBox()
+        divider.boxType = .separator
+
+        let stack = NSStackView(views: [
+            showWhileDraggingCheckbox,
+            hideWhenMaximizedCheckbox,
+            focusPulseCheckbox,
+            spotlightModeCheckbox,
+            dimRow,
+            findMyWindowCheckbox,
+            shortcutRow,
+            shakeToFindCheckbox,
+            divider,
+            launchAtLoginCheckbox
+        ])
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 12
+        view.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -24),
+            divider.widthAnchor.constraint(equalTo: stack.widthAnchor)
+        ])
+
+        return view
+    }
+
+    // MARK: Excluded-apps tab
+
+    private func makeExcludedAppsTab() -> NSView {
+        let view = NSView()
+
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("AppColumn"))
+        column.title = "Application"
+        excludedAppsTableView.addTableColumn(column)
+        excludedAppsTableView.headerView = nil
+        excludedAppsTableView.rowHeight = 22
+        excludedAppsTableView.allowsMultipleSelection = false
+        excludedAppsTableView.delegate = self
+        excludedAppsTableView.dataSource = self
+        excludedAppsTableView.registerForDraggedTypes([.fileURL])
+
+        let scrollView = NSScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = excludedAppsTableView
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .bezelBorder
+
+        let addButton = NSButton(title: "Add App…", target: self, action: #selector(addExcludedApp(_:)))
+        let removeButton = NSButton(title: "Remove", target: self, action: #selector(removeExcludedApp(_:)))
+        addButton.translatesAutoresizingMaskIntoConstraints = false
+        removeButton.translatesAutoresizingMaskIntoConstraints = false
+
+        let hint = makeLabel("Apps in this list never get a border. Drag applications here, or click Add.")
+        hint.textColor = .secondaryLabelColor
+        hint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        hint.lineBreakMode = .byWordWrapping
+        hint.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        view.addSubview(hint)
+        view.addSubview(scrollView)
+        view.addSubview(addButton)
+        view.addSubview(removeButton)
+
+        NSLayoutConstraint.activate([
+            hint.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
+            hint.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            hint.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -16),
+
+            scrollView.topAnchor.constraint(equalTo: hint.bottomAnchor, constant: 10),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+
+            addButton.topAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: 10),
+            addButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            addButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -14),
+            removeButton.centerYAnchor.constraint(equalTo: addButton.centerYAnchor),
+            removeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16)
+        ])
+
+        return view
+    }
+
+    // MARK: Small builders
+
+    private func makeLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }
+
+    private func makeNumberField(boundTo key: String) -> NSTextField {
+        let field = NSTextField()
+        field.translatesAutoresizingMaskIntoConstraints = false
+        let formatter = NumberFormatter()
+        formatter.allowsFloats = false
+        field.formatter = formatter
+        field.bind(
+            .value,
+            to: NSUserDefaultsController.shared,
+            withKeyPath: "values.\(key)",
+            options: nil
+        )
+        field.widthAnchor.constraint(equalToConstant: 60).isActive = true
+        return field
+    }
+
+    private func makeStepper(boundTo key: String, min: Double, max: Double) -> NSStepper {
+        let stepper = NSStepper()
+        stepper.translatesAutoresizingMaskIntoConstraints = false
+        stepper.minValue = min
+        stepper.maxValue = max
+        stepper.increment = 1
+        stepper.valueWraps = false
+        stepper.bind(
+            .value,
+            to: NSUserDefaultsController.shared,
+            withKeyPath: "values.\(key)",
+            options: nil
+        )
+        return stepper
+    }
+
+    private func setUp(_ checkbox: NSButton, action: Selector) {
+        checkbox.translatesAutoresizingMaskIntoConstraints = false
+        checkbox.target = self
+        checkbox.action = action
+    }
+
+    // A horizontal row indented under its governing checkbox.
+    private func indentedRow(_ views: [NSView]) -> NSStackView {
+        let row = NSStackView(views: views)
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        row.edgeInsets = NSEdgeInsets(top: 0, left: 24, bottom: 0, right: 0)
+        return row
+    }
+
+    // MARK: - State
+
+    private func loadValues() {
         lightModeColorWell.color = UserDefaults.standard.color(forKey: Key.lightMode) ?? Defaults.lightModeColor
         darkModeColorWell.color = UserDefaults.standard.color(forKey: Key.darkMode) ?? Defaults.darkModeColor
 
-        let showFrameWhileDragging = UserDefaults.standard.bool(forKey: Key.showFrameWhileDragging)
-        showFrameWhileDraggingCheckbox.state = showFrameWhileDragging ? .on : .off
-
-        let glowingBorder = UserDefaults.standard.bool(forKey: Key.glowingBorder)
-        glowingBorderCheckbox.state = glowingBorder ? .on : .off
-
-        let strongerShadow = UserDefaults.standard.bool(forKey: Key.strongerShadow)
-        strongerShadowCheckbox.state = strongerShadow ? .on : .off
-
-        let hideBorderWhenMaximized = UserDefaults.standard.bool(forKey: Key.hideBorderWhenMaximized)
-        hideBorderWhenMaximizedCheckbox.state = hideBorderWhenMaximized ? .on : .off
-
-        let focusPulse = UserDefaults.standard.bool(forKey: Key.focusPulse)
-        focusPulseCheckbox.state = focusPulse ? .on : .off
-
-        let perAppColors = UserDefaults.standard.bool(forKey: Key.perAppColors)
-        perAppColorsCheckbox.state = perAppColors ? .on : .off
-
-        let spotlightMode = UserDefaults.standard.bool(forKey: Key.spotlightMode)
-        spotlightModeCheckbox.state = spotlightMode ? .on : .off
-
-        let findMyWindowHotkey = UserDefaults.standard.bool(forKey: Key.findMyWindowHotkey)
-        findMyWindowHotkeyCheckbox.state = findMyWindowHotkey ? .on : .off
-
-        let partyMode = UserDefaults.standard.bool(forKey: Key.partyMode)
-        partyModeCheckbox.state = partyMode ? .on : .off
-
         excludedApps = UserDefaults.standard.stringArray(forKey: Key.excludedApps) ?? []
-        excludedAppsTableView?.delegate = self
-        excludedAppsTableView?.dataSource = self
+        excludedAppsTableView.reloadData()
 
+        syncDynamicUI()
     }
-    
-    @IBAction func lightModeChanged(_ sender: NSColorWell) {
+
+    @objc private func defaultsChanged() {
+        syncDynamicUI()
+    }
+
+    private func syncDynamicUI() {
+        let defaults = UserDefaults.standard
+
+        showWhileDraggingCheckbox.state = defaults.bool(forKey: Key.showFrameWhileDragging) ? .on : .off
+        hideWhenMaximizedCheckbox.state = defaults.bool(forKey: Key.hideBorderWhenMaximized) ? .on : .off
+        focusPulseCheckbox.state = defaults.bool(forKey: Key.focusPulse) ? .on : .off
+        spotlightModeCheckbox.state = defaults.bool(forKey: Key.spotlightMode) ? .on : .off
+        findMyWindowCheckbox.state = defaults.bool(forKey: Key.findMyWindowHotkey) ? .on : .off
+        shakeToFindCheckbox.state = defaults.bool(forKey: Key.shakeToFind) ? .on : .off
+        perAppColorsCheckbox.state = defaults.bool(forKey: Key.perAppColors) ? .on : .off
+        glowingBorderCheckbox.state = defaults.bool(forKey: Key.glowingBorder) ? .on : .off
+        strongerShadowCheckbox.state = defaults.bool(forKey: Key.strongerShadow) ? .on : .off
+        partyModeCheckbox.state = defaults.bool(forKey: Key.partyMode) ? .on : .off
+        launchAtLoginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
+
+        let spotlightOn = defaults.bool(forKey: Key.spotlightMode)
+        dimLevelSlider.isEnabled = spotlightOn
+        var dimLevel = defaults.double(forKey: Key.spotlightDimLevel)
+        if dimLevel == 0 {
+            dimLevel = Defaults.spotlightDimAlpha
+        }
+        dimLevelLabel.stringValue = "\(Int((dimLevel * 100).rounded()))%"
+
+        // The pulse animates the border, which spotlight mode replaces, so
+        // the checkbox would be a silent no-op while spotlight is on.
+        focusPulseCheckbox.isEnabled = !spotlightOn
+        focusPulseCheckbox.toolTip = spotlightOn
+            ? "Spotlight mode replaces the border, so there is no border to pulse."
+            : nil
+
+        shortcutRecorder.isEnabled = defaults.bool(forKey: Key.findMyWindowHotkey)
+        shortcutRecorder.refreshTitle()
+
+        previewView.needsDisplay = true
+    }
+
+    // MARK: - Actions
+
+    @objc func lightModeChanged(_ sender: NSColorWell) {
         UserDefaults.standard.setColor(sender.color, forKey: Key.lightMode)
     }
-    
-    @IBAction func darkModeChanged(_ sender: NSColorWell) {
+
+    @objc func darkModeChanged(_ sender: NSColorWell) {
         UserDefaults.standard.setColor(sender.color, forKey: Key.darkMode)
     }
 
-    @IBAction func showFrameWhileDraggingChanged(_ sender: NSButton) {
+    @objc func showFrameWhileDraggingChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.showFrameWhileDragging)
     }
 
-    @IBAction func glowingBorderChanged(_ sender: NSButton) {
+    @objc func glowingBorderChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.glowingBorder)
     }
 
-    @IBAction func strongerShadowChanged(_ sender: NSButton) {
+    @objc func strongerShadowChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.strongerShadow)
     }
 
-    @IBAction func hideBorderWhenMaximizedChanged(_ sender: NSButton) {
+    @objc func hideBorderWhenMaximizedChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.hideBorderWhenMaximized)
     }
 
-    @IBAction func focusPulseChanged(_ sender: NSButton) {
+    @objc func focusPulseChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.focusPulse)
     }
 
-    @IBAction func perAppColorsChanged(_ sender: NSButton) {
+    @objc func perAppColorsChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.perAppColors)
     }
 
-    @IBAction func spotlightModeChanged(_ sender: NSButton) {
+    @objc func spotlightModeChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.spotlightMode)
     }
 
-    @IBAction func findMyWindowHotkeyChanged(_ sender: NSButton) {
+    @objc func findMyWindowHotkeyChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.findMyWindowHotkey)
     }
 
-    @IBAction func partyModeChanged(_ sender: NSButton) {
+    @objc func partyModeChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.partyMode)
     }
 
-    @IBAction func addExcludedApp(_ sender: Any) {
+    @objc func shakeToFindChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.shakeToFind)
+    }
+
+    @objc func launchAtLoginChanged(_ sender: NSButton) {
+        do {
+            if sender.state == .on {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            NSSound.beep()
+        }
+        sender.state = SMAppService.mainApp.status == .enabled ? .on : .off
+    }
+
+    @objc func addExcludedApp(_ sender: Any) {
         let openPanel = NSOpenPanel()
         openPanel.canChooseFiles = true
         openPanel.canChooseDirectories = false
@@ -124,8 +466,7 @@ class PrefsWindowController: NSWindowController {
         }
     }
 
-
-    @IBAction func removeExcludedApp(_ sender: Any) {
+    @objc func removeExcludedApp(_ sender: Any) {
         let selectedRow = excludedAppsTableView.selectedRow
         guard selectedRow >= 0 && selectedRow < excludedApps.count else { return }
 
@@ -140,8 +481,9 @@ class PrefsWindowController: NSWindowController {
         UserDefaults.standard.set(excludedApps, forKey: Key.excludedApps)
         excludedAppsTableView.reloadData()
     }
-
 }
+
+// MARK: - Excluded-apps table
 
 extension PrefsWindowController: NSTableViewDelegate, NSTableViewDataSource {
     func numberOfRows(in tableView: NSTableView) -> Int {
@@ -191,5 +533,211 @@ extension PrefsWindowController: NSTableViewDelegate, NSTableViewDataSource {
 
         return cellView
     }
+
+    // MARK: Drag and drop
+
+    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+        guard !applicationURLs(from: info).isEmpty else { return [] }
+        // The list is unordered; highlight the whole table.
+        tableView.setDropRow(-1, dropOperation: .on)
+        return .copy
+    }
+
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+        let urls = applicationURLs(from: info)
+        guard !urls.isEmpty else { return false }
+
+        for url in urls {
+            if let bundleIdentifier = Bundle(url: url)?.bundleIdentifier {
+                addExcludedAppWithBundleId(bundleIdentifier)
+            }
+        }
+        return true
+    }
+
+    private func applicationURLs(from info: NSDraggingInfo) -> [URL] {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL] ?? []
+        return urls.filter { $0.pathExtension == "app" }
+    }
 }
 
+// MARK: - Live preview
+
+// A mock desktop with a mock window, bordered by the real drawing code —
+// what you tweak is what you get.
+final class BorderPreviewView: NSView {
+
+    private var redrawTimer: Timer?
+
+    // Party mode cycles and per-app colors change without defaults
+    // notifications, so just repaint while the preview is on screen.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        redrawTimer?.invalidate()
+        redrawTimer = nil
+        guard window != nil else { return }
+
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            self?.needsDisplay = true
+        }
+        RunLoop.current.add(timer, forMode: .common)
+        redrawTimer = timer
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        // Desktop
+        NSColor.underPageBackgroundColor.setFill()
+        bounds.fill()
+
+        // Mock window, leaving room around it for inset, border, and glow
+        let windowRect = bounds.insetBy(dx: 90, dy: 38)
+        let windowPath = NSBezierPath(roundedRect: windowRect, xRadius: 9, yRadius: 9)
+        NSColor.windowBackgroundColor.setFill()
+        windowPath.fill()
+        NSColor.separatorColor.setStroke()
+        windowPath.lineWidth = 1
+        windowPath.stroke()
+
+        // Traffic lights, for charm
+        let dotColors: [NSColor] = [.systemRed, .systemYellow, .systemGreen]
+        for (i, dotColor) in dotColors.enumerated() {
+            let dot = NSRect(
+                x: windowRect.minX + 10 + CGFloat(i) * 12,
+                y: windowRect.maxY - 16,
+                width: 7,
+                height: 7
+            )
+            dotColor.setFill()
+            NSBezierPath(ovalIn: dot).fill()
+        }
+
+        // The real border, drawn by the real code
+        NSGraphicsContext.current?.saveGraphicsState()
+        HighlightView.drawBorder(around: windowRect)
+        NSGraphicsContext.current?.restoreGraphicsState()
+    }
+}
+
+// MARK: - Shortcut recorder
+
+// A button that records the next keystroke as the find-my-window hotkey.
+// Click, press a combo (it needs ⌘, ⌃, or ⌥ — a global hotkey without one
+// would shadow plain typing), Escape cancels.
+final class ShortcutRecorderButton: NSButton {
+
+    private var keyMonitor: Any?
+    private var isRecording = false
+
+    convenience init() {
+        self.init(frame: .zero)
+        bezelStyle = .rounded
+        setButtonType(.momentaryPushIn)
+        target = self
+        action = #selector(toggleRecording(_:))
+        refreshTitle()
+    }
+
+    func refreshTitle() {
+        if isRecording {
+            title = "Type shortcut…"
+        } else {
+            title = UserDefaults.standard.string(forKey: Key.findMyWindowShortcutLabel)
+                ?? Defaults.findMyWindowDefaultLabel
+        }
+    }
+
+    @objc private func toggleRecording(_ sender: Any?) {
+        isRecording ? endRecording() : beginRecording()
+    }
+
+    private func beginRecording() {
+        isRecording = true
+        refreshTitle()
+
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+
+            if Int(event.keyCode) == kVK_Escape {
+                self.endRecording()
+                return nil
+            }
+
+            let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
+            guard !flags.intersection([.command, .option, .control]).isEmpty else {
+                NSSound.beep()
+                return nil
+            }
+
+            let defaults = UserDefaults.standard
+            defaults.set(Int(event.keyCode), forKey: Key.findMyWindowKeyCode)
+            defaults.set(Self.carbonModifiers(from: flags), forKey: Key.findMyWindowModifiers)
+            defaults.set(Self.displayString(for: event, flags: flags), forKey: Key.findMyWindowShortcutLabel)
+
+            self.endRecording()
+            return nil
+        }
+    }
+
+    private func endRecording() {
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+        }
+        keyMonitor = nil
+        isRecording = false
+        refreshTitle()
+    }
+
+    private static func carbonModifiers(from flags: NSEvent.ModifierFlags) -> Int {
+        var carbon = 0
+        if flags.contains(.command) { carbon |= cmdKey }
+        if flags.contains(.option) { carbon |= optionKey }
+        if flags.contains(.control) { carbon |= controlKey }
+        if flags.contains(.shift) { carbon |= shiftKey }
+        return carbon
+    }
+
+    private static func displayString(for event: NSEvent, flags: NSEvent.ModifierFlags) -> String {
+        var result = ""
+        if flags.contains(.control) { result += "⌃" }
+        if flags.contains(.option) { result += "⌥" }
+        if flags.contains(.shift) { result += "⇧" }
+        if flags.contains(.command) { result += "⌘" }
+        result += keyName(for: event)
+        return result
+    }
+
+    private static func keyName(for event: NSEvent) -> String {
+        switch Int(event.keyCode) {
+        case kVK_Space: return "Space"
+        case kVK_Return: return "↩"
+        case kVK_Tab: return "⇥"
+        case kVK_Delete: return "⌫"
+        case kVK_ForwardDelete: return "⌦"
+        case kVK_LeftArrow: return "←"
+        case kVK_RightArrow: return "→"
+        case kVK_UpArrow: return "↑"
+        case kVK_DownArrow: return "↓"
+        case kVK_Home: return "↖"
+        case kVK_End: return "↘"
+        case kVK_PageUp: return "⇞"
+        case kVK_PageDown: return "⇟"
+        case kVK_F1: return "F1"
+        case kVK_F2: return "F2"
+        case kVK_F3: return "F3"
+        case kVK_F4: return "F4"
+        case kVK_F5: return "F5"
+        case kVK_F6: return "F6"
+        case kVK_F7: return "F7"
+        case kVK_F8: return "F8"
+        case kVK_F9: return "F9"
+        case kVK_F10: return "F10"
+        case kVK_F11: return "F11"
+        case kVK_F12: return "F12"
+        default:
+            return event.charactersIgnoringModifiers?.uppercased() ?? "?"
+        }
+    }
+}

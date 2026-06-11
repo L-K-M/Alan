@@ -11,9 +11,7 @@ import ApplicationServices
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
 
-    let prefsWindowController: PrefsWindowController = {
-        return PrefsWindowController(windowNibName: String(describing: PrefsWindowController.self))
-    }()
+    let prefsWindowController = PrefsWindowController()
 
     private var statusItem: NSStatusItem?
 
