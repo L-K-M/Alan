@@ -20,6 +20,7 @@ class PrefsWindowController: NSWindowController {
     @IBOutlet weak var perAppColorsCheckbox: NSButton!
     @IBOutlet weak var spotlightModeCheckbox: NSButton!
     @IBOutlet weak var findMyWindowHotkeyCheckbox: NSButton!
+    @IBOutlet weak var partyModeCheckbox: NSButton!
     @IBOutlet weak var excludedAppsTableView: NSTableView!
 
     private var excludedApps: [String] = []
@@ -53,6 +54,9 @@ class PrefsWindowController: NSWindowController {
 
         let findMyWindowHotkey = UserDefaults.standard.bool(forKey: Key.findMyWindowHotkey)
         findMyWindowHotkeyCheckbox.state = findMyWindowHotkey ? .on : .off
+
+        let partyMode = UserDefaults.standard.bool(forKey: Key.partyMode)
+        partyModeCheckbox.state = partyMode ? .on : .off
 
         excludedApps = UserDefaults.standard.stringArray(forKey: Key.excludedApps) ?? []
         excludedAppsTableView?.delegate = self
@@ -99,6 +103,10 @@ class PrefsWindowController: NSWindowController {
 
     @IBAction func findMyWindowHotkeyChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.findMyWindowHotkey)
+    }
+
+    @IBAction func partyModeChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.partyMode)
     }
 
     @IBAction func addExcludedApp(_ sender: Any) {

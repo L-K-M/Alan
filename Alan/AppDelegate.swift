@@ -30,6 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Key.perAppColors: false,
             Key.spotlightMode: false,
             Key.findMyWindowHotkey: false,
+            Key.partyMode: false,
             Key.hideDock: false
         ])
 
