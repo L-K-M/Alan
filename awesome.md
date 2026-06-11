@@ -78,8 +78,6 @@ conditional cast would make it crash-proof.
 
 - **Party mode** 🌈. Slowly cycle the border hue. Zero practical value,
   maximal joy, perfectly on-brand for a self-described satire app.
-- **"Find my window".** A global hotkey that flashes the border three
-  times; spiritual cousin of shake-to-find-cursor.
 
 ---
 

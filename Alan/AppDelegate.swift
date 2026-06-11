@@ -29,6 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Key.focusPulse: false,
             Key.perAppColors: false,
             Key.spotlightMode: false,
+            Key.findMyWindowHotkey: false,
             Key.hideDock: false
         ])
 
