@@ -20,6 +20,15 @@ The fix for windows on secondary displays was contributed back upstream
 ([tylerhall/Alan#10](https://github.com/tylerhall/Alan/pull/10)); beyond
 that, this fork adds:
 
+- A corner radius setting, so the border can hug modern macOS windows
+  instead of poking square corners past them.
+- An optional stronger drop shadow behind the active window, and an
+  optional glow on the border itself.
+- A setting to hide the border while a window is being dragged (it
+  returns once the window settles), and one to hide it when a window
+  fills its screen — maximized or full-screen, judged against the
+  display the window is on, so multi-monitor setups work.
+- An excluded-apps list, for apps that should never get a border.
 - Event-driven window tracking via `AXObserver` (replacing the original
   10 Hz polling), with a short-lived timer to follow live drags.
 - The border recolors immediately when the system switches between light
@@ -51,13 +60,20 @@ Or build it yourself: open `Alan.xcodeproj` in Xcode and hit Run.
 
 ## Configuration
 
-Border colors live in **Preferences…**. Width and inset (both clamped to
-1–20 points) and the hidden-Dock mode have no UI yet and are set via
-`defaults`:
+**Preferences…** covers just about everything:
+
+- Border width and inset (1–20 points), corner radius (0–50 points)
+- One border color for light mode, one for dark mode
+- **Stronger Shadow** and **Glowing Border**
+- **Show border while dragging** — untick to hide the border while a
+  window is moving; it reappears once the window has settled
+- **Hide border when window fills the screen** — skips maximized and
+  full-screen windows, decided per display
+- **Excluded Apps** — apps in this list never get a border
+
+The hidden-Dock mode is the one remaining `defaults`-only setting:
 
 ```sh
-defaults write studio.retina.Alan width -int 8
-defaults write studio.retina.Alan inset -int 2
 defaults write studio.retina.Alan hideDock -bool true   # takes effect on relaunch
 ```
 
