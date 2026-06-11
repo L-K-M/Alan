@@ -99,21 +99,29 @@ class FocusHighlighter {
     // (unlike a passive event monitor, which would let it through to the
     // focused app) and needs no extra permissions.
     private func registerFindMyWindowHotkey() {
+        // The event handler is installed once and kept for the app's
+        // lifetime; it does nothing while no hotkey is registered. It must
+        // not be reinstalled per attempt: registration is retried on every
+        // defaults or appearance change, so a persistently failing
+        // RegisterEventHotKey (the combo taken by another app, say) would
+        // otherwise stack a new handler each time.
+        if hotKeyEventHandler == nil {
+            var eventType = EventTypeSpec(
+                eventClass: OSType(kEventClassKeyboard),
+                eventKind: UInt32(kEventHotKeyPressed)
+            )
+            let refcon = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+            InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
+                guard let userData else { return noErr }
+                Unmanaged<FocusHighlighter>.fromOpaque(userData).takeUnretainedValue().flashBorder()
+                return noErr
+            }, 1, &eventType, refcon, &hotKeyEventHandler)
+        }
+
         guard hotKeyRef == nil else { return }
 
-        var eventType = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: UInt32(kEventHotKeyPressed)
-        )
-        let refcon = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
-            guard let userData else { return noErr }
-            Unmanaged<FocusHighlighter>.fromOpaque(userData).takeUnretainedValue().flashBorder()
-            return noErr
-        }, 1, &eventType, refcon, &hotKeyEventHandler)
-
         let hotKeyID = EventHotKeyID(signature: OSType(0x414C_414E) /* 'ALAN' */, id: 1)
-        RegisterEventHotKey(
+        let status = RegisterEventHotKey(
             UInt32(kVK_ANSI_F),
             UInt32(controlKey | optionKey | cmdKey),
             hotKeyID,
@@ -121,16 +129,17 @@ class FocusHighlighter {
             0,
             &hotKeyRef
         )
+        if status != noErr {
+            // The out parameter is not defined on failure; make sure the
+            // next attempt isn't fooled into thinking we're registered.
+            hotKeyRef = nil
+        }
     }
 
     private func unregisterFindMyWindowHotkey() {
         if let hotKeyRef {
             UnregisterEventHotKey(hotKeyRef)
             self.hotKeyRef = nil
-        }
-        if let hotKeyEventHandler {
-            RemoveEventHandler(hotKeyEventHandler)
-            self.hotKeyEventHandler = nil
         }
     }
 
