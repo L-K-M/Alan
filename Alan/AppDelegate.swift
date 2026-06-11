@@ -11,9 +11,7 @@ import ApplicationServices
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
 
-    let prefsWindowController: PrefsWindowController = {
-        return PrefsWindowController(windowNibName: String(describing: PrefsWindowController.self))
-    }()
+    let prefsWindowController = PrefsWindowController()
 
     private var statusItem: NSStatusItem?
 
@@ -25,11 +23,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Key.width: 5,
             Key.inset: 4,
             Key.cornerRadius: 0,
+            Key.showFrameWhileDragging: true,
             Key.hideBorderWhenMaximized: false,
             Key.focusPulse: false,
             Key.perAppColors: false,
             Key.spotlightMode: false,
             Key.findMyWindowHotkey: false,
+            Key.findMyWindowKeyCode: Defaults.findMyWindowDefaultKeyCode,
+            Key.findMyWindowModifiers: Defaults.findMyWindowDefaultModifiers,
+            Key.findMyWindowShortcutLabel: Defaults.findMyWindowDefaultLabel,
+            Key.shakeToFind: false,
+            Key.spotlightDimLevel: Defaults.spotlightDimAlpha,
             Key.partyMode: false,
             Key.hideDock: false
         ])
