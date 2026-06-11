@@ -29,6 +29,8 @@ that, this fork adds:
   fills its screen — maximized or full-screen, judged against the
   display the window is on, so multi-monitor setups work.
 - An excluded-apps list, for apps that should never get a border.
+- An optional focus pulse: the border briefly thickens when focus
+  changes, then settles.
 - Event-driven window tracking via `AXObserver` (replacing the original
   10 Hz polling), with a short-lived timer to follow live drags.
 - The border recolors immediately when the system switches between light
@@ -69,6 +71,8 @@ Or build it yourself: open `Alan.xcodeproj` in Xcode and hit Run.
   window is moving; it reappears once the window has settled
 - **Hide border when window fills the screen** — skips maximized and
   full-screen windows, decided per display
+- **Pulse border on focus change** — briefly thickens the border when
+  focus moves, then settles
 - **Excluded Apps** — apps in this list never get a border
 
 The hidden-Dock mode is the one remaining `defaults`-only setting:

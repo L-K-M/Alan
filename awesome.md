@@ -76,9 +76,6 @@ conditional cast would make it crash-proof.
 
 ## Ideas — novel, delightful, quirky
 
-- **Focus pulse.** Flash or briefly thicken the border when focus
-  *changes*, then settle — helps the app's whole reason to exist: noticing
-  where keyboard input goes.
 - **Per-app colors.** Hash the frontmost app's bundle ID into a hue (the AX
   element already knows its pid; `NSRunningApplication` gives the bundle
   ID). Terminal is always teal, Xcode always whatever it deserves — you

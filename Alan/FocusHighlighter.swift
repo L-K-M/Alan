@@ -15,6 +15,7 @@ class FocusHighlighter {
     private let systemWideElement = AXUIElementCreateSystemWide()
     private let highlightWindow = HighlightWindow()
     private var lastFrame: CGRect?
+    private var lastFocusedWindow: AXUIElement?
     private var frameIsDrawn = false;
     private var drawFrame = true
     private var disableFrameTimer: Timer?
@@ -155,15 +156,17 @@ class FocusHighlighter {
                     highlightWindow.orderOut(nil)
                     lastFrame = nil
                 }
+                lastFocusedWindow = nil
                 return
             }
         }
 
-        guard let axFrame = currentFocusedWindowFrame() else {
+        guard let (windowElement, axFrame) = currentFocusedWindow() else {
             if highlightWindow.isVisible {
                 highlightWindow.orderOut(nil)
                 lastFrame = nil
             }
+            lastFocusedWindow = nil
             return
         }
 
@@ -177,7 +180,16 @@ class FocusHighlighter {
                 highlightWindow.orderOut(nil)
                 lastFrame = nil
             }
+            lastFocusedWindow = nil
             return
+        }
+
+        // A focus change invalidates what's drawn even when the newly
+        // focused window happens to have the exact same frame.
+        let focusChanged = !isSameWindow(windowElement, lastFocusedWindow)
+        lastFocusedWindow = windowElement
+        if focusChanged {
+            frameIsDrawn = false
         }
 
         if lastFrame != cocoaFrame {
@@ -193,7 +205,15 @@ class FocusHighlighter {
         if !frameIsDrawn && drawFrame {
             frameIsDrawn = true;
             highlightWindow.updateFrame(to: cocoaFrame)
+            if focusChanged && UserDefaults.standard.bool(forKey: Key.focusPulse) {
+                highlightWindow.pulse()
+            }
         }
+    }
+
+    private func isSameWindow(_ a: AXUIElement?, _ b: AXUIElement?) -> Bool {
+        guard let a, let b else { return a == nil && b == nil }
+        return CFEqual(a, b)
     }
 
     private func temporarilyDisableFrameDrawing() {
@@ -237,7 +257,7 @@ class FocusHighlighter {
     }
 
     // Hello, darkness, my old friend. I'm still really bad at this API.
-    private func currentFocusedWindowFrame() -> CGRect? {
+    private func currentFocusedWindow() -> (element: AXUIElement, frame: CGRect)? {
         var focusedElement: CFTypeRef?
         let err = AXUIElementCopyAttributeValue(
             systemWideElement,
@@ -281,7 +301,7 @@ class FocusHighlighter {
         var rect = CGRect.zero
         if AXValueGetType(cfValue as! AXValue) == .cgRect {
             AXValueGetValue(cfValue as! AXValue, .cgRect, &rect)
-            return rect
+            return (targetElement, rect)
         }
 
         return nil

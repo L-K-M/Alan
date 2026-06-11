@@ -16,6 +16,7 @@ class PrefsWindowController: NSWindowController {
     @IBOutlet weak var glowingBorderCheckbox: NSButton!
     @IBOutlet weak var strongerShadowCheckbox: NSButton!
     @IBOutlet weak var hideBorderWhenMaximizedCheckbox: NSButton!
+    @IBOutlet weak var focusPulseCheckbox: NSButton!
     @IBOutlet weak var excludedAppsTableView: NSTableView!
 
     private var excludedApps: [String] = []
@@ -37,6 +38,9 @@ class PrefsWindowController: NSWindowController {
 
         let hideBorderWhenMaximized = UserDefaults.standard.bool(forKey: Key.hideBorderWhenMaximized)
         hideBorderWhenMaximizedCheckbox.state = hideBorderWhenMaximized ? .on : .off
+
+        let focusPulse = UserDefaults.standard.bool(forKey: Key.focusPulse)
+        focusPulseCheckbox.state = focusPulse ? .on : .off
 
         excludedApps = UserDefaults.standard.stringArray(forKey: Key.excludedApps) ?? []
         excludedAppsTableView?.delegate = self
@@ -67,6 +71,10 @@ class PrefsWindowController: NSWindowController {
 
     @IBAction func hideBorderWhenMaximizedChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.hideBorderWhenMaximized)
+    }
+
+    @IBAction func focusPulseChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.focusPulse)
     }
 
     @IBAction func addExcludedApp(_ sender: Any) {
