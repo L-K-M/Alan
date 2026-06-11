@@ -16,7 +16,7 @@ struct Defaults {
     static let focusPulsePeak: CGFloat = 2.5
     static let spotlightDimAlpha: Double = 0.45
     static let partyModeCycleDuration: TimeInterval = 6
-    static let spotlightAnimationDuration: TimeInterval = 0.25
+    static let moveAnimationDuration: TimeInterval = 0.25
     static let shakeMinSwing: CGFloat = 12
     static let shakeWindow: TimeInterval = 0.7
     static let shakeReversalCount = 4
@@ -46,7 +46,7 @@ struct Key {
     static let findMyWindowHotkey = "findMyWindowHotkey"
     static let partyMode = "partyMode"
     static let spotlightDimLevel = "spotlightDimLevel"
-    static let animateSpotlight = "animateSpotlight"
+    static let animateMovement = "animateMovement"
     static let findMyWindowKeyCode = "findMyWindowKeyCode"
     static let findMyWindowModifiers = "findMyWindowModifiers"
     static let findMyWindowShortcutLabel = "findMyWindowShortcutLabel"

@@ -28,7 +28,7 @@ class PrefsWindowController: NSWindowController {
     private let hideWhenMaximizedCheckbox = NSButton(checkboxWithTitle: "Hide border when window fills the screen", target: nil, action: nil)
     private let focusPulseCheckbox = NSButton(checkboxWithTitle: "Pulse border on focus change", target: nil, action: nil)
     private let spotlightModeCheckbox = NSButton(checkboxWithTitle: "Spotlight mode (dim other windows)", target: nil, action: nil)
-    private let animateSpotlightCheckbox = NSButton(checkboxWithTitle: "Animate spotlight movement", target: nil, action: nil)
+    private let animateMovementCheckbox = NSButton(checkboxWithTitle: "Animate movement between windows", target: nil, action: nil)
     private let dimLevelSlider = NSSlider(value: Defaults.spotlightDimAlpha, minValue: 0.1, maxValue: 0.9, target: nil, action: nil)
     private let dimLevelLabel = NSTextField(labelWithString: "45%")
     private let findMyWindowCheckbox = NSButton(checkboxWithTitle: "“Find my window” hotkey — flashes the border", target: nil, action: nil)
@@ -169,7 +169,7 @@ class PrefsWindowController: NSWindowController {
         setUp(hideWhenMaximizedCheckbox, action: #selector(hideBorderWhenMaximizedChanged(_:)))
         setUp(focusPulseCheckbox, action: #selector(focusPulseChanged(_:)))
         setUp(spotlightModeCheckbox, action: #selector(spotlightModeChanged(_:)))
-        setUp(animateSpotlightCheckbox, action: #selector(animateSpotlightChanged(_:)))
+        setUp(animateMovementCheckbox, action: #selector(animateMovementChanged(_:)))
         setUp(findMyWindowCheckbox, action: #selector(findMyWindowHotkeyChanged(_:)))
         setUp(shakeToFindCheckbox, action: #selector(shakeToFindChanged(_:)))
         setUp(launchAtLoginCheckbox, action: #selector(launchAtLoginChanged(_:)))
@@ -201,8 +201,8 @@ class PrefsWindowController: NSWindowController {
             showWhileDraggingCheckbox,
             hideWhenMaximizedCheckbox,
             focusPulseCheckbox,
+            animateMovementCheckbox,
             spotlightModeCheckbox,
-            indentedRow([animateSpotlightCheckbox]),
             dimRow,
             findMyWindowCheckbox,
             shortcutRow,
@@ -369,9 +369,9 @@ class PrefsWindowController: NSWindowController {
         partyModeCheckbox.state = defaults.bool(forKey: Key.partyMode) ? .on : .off
         launchAtLoginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
 
+        animateMovementCheckbox.state = defaults.bool(forKey: Key.animateMovement) ? .on : .off
+
         let spotlightOn = defaults.bool(forKey: Key.spotlightMode)
-        animateSpotlightCheckbox.state = defaults.bool(forKey: Key.animateSpotlight) ? .on : .off
-        animateSpotlightCheckbox.isEnabled = spotlightOn
         dimLevelSlider.isEnabled = spotlightOn
         var dimLevel = defaults.double(forKey: Key.spotlightDimLevel)
         if dimLevel == 0 {
@@ -430,8 +430,8 @@ class PrefsWindowController: NSWindowController {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.spotlightMode)
     }
 
-    @objc func animateSpotlightChanged(_ sender: NSButton) {
-        UserDefaults.standard.set(sender.state == .on, forKey: Key.animateSpotlight)
+    @objc func animateMovementChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.animateMovement)
     }
 
     @objc func findMyWindowHotkeyChanged(_ sender: NSButton) {

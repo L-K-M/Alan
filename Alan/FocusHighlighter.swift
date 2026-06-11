@@ -42,6 +42,8 @@ class FocusHighlighter {
 
     private var displayedCutout: CGRect?
     private var spotlightAnimationTimer: Timer?
+    private var displayedBorderFrame: CGRect?
+    private var borderAnimationTimer: Timer?
 
     private var workspaceObserver: NSObjectProtocol?
     private var defaultsObserver: NSObjectProtocol?
@@ -423,7 +425,7 @@ class FocusHighlighter {
             moveSpotlight(to: frame)
         } else {
             hideDimWindows()
-            highlightWindow.updateFrame(to: frame)
+            moveBorder(to: frame)
             // The party redraw timer only needs to run while the border is
             // actually on screen.
             highlightWindow.setPartyMode(UserDefaults.standard.bool(forKey: Key.partyMode))
@@ -438,6 +440,8 @@ class FocusHighlighter {
         highlightVisible = false
         spotlightAnimationTimer?.invalidate()
         spotlightAnimationTimer = nil
+        borderAnimationTimer?.invalidate()
+        borderAnimationTimer = nil
         // displayedCutout is deliberately kept: app switches routinely pass
         // through a transient "no focused window" moment that hides the
         // spotlight for a frame, and forgetting the position here meant the
@@ -445,15 +449,15 @@ class FocusHighlighter {
         // it lets the stage light swing over from wherever it last was.
     }
 
-    // The cut-out glides from where it is to the new window over a few
+    // The highlight glides from where it is to the new window over a few
     // frames — a stage light swinging across the screen — instead of
     // teleporting. Re-targeting mid-flight restarts from the current
-    // position, so a window dragged at 30 Hz is chased smoothly.
+    // position. Both glides skip the easing while a drag is tracked at
+    // 30 Hz (the updates themselves are the animation; easing would only
+    // add lag) and when the animate-movement preference is off.
+
     private func moveSpotlight(to target: CGRect) {
-        // While a drag is tracked at 30 Hz the updates themselves are the
-        // animation; easing on top would only add lag. And the whole glide
-        // is optional.
-        if dragTimer != nil || !UserDefaults.standard.bool(forKey: Key.animateSpotlight) {
+        if dragTimer != nil || !UserDefaults.standard.bool(forKey: Key.animateMovement) {
             spotlightAnimationTimer?.invalidate()
             spotlightAnimationTimer = nil
             displayedCutout = target
@@ -472,33 +476,67 @@ class FocusHighlighter {
         }
 
         spotlightAnimationTimer?.invalidate()
-        let start = Date().timeIntervalSinceReferenceDate
-
-        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
-            guard let self else {
-                timer.invalidate()
-                return
+        spotlightAnimationTimer = makeGlideTimer(from: from, to: target) { [weak self] rect, finished in
+            guard let self else { return }
+            self.displayedCutout = rect
+            self.updateDimWindows(cutout: rect)
+            if finished {
+                self.spotlightAnimationTimer = nil
             }
-            let t = (Date().timeIntervalSinceReferenceDate - start) / Defaults.spotlightAnimationDuration
+        }
+    }
+
+    private func moveBorder(to target: CGRect) {
+        if dragTimer != nil || !UserDefaults.standard.bool(forKey: Key.animateMovement) {
+            borderAnimationTimer?.invalidate()
+            borderAnimationTimer = nil
+            displayedBorderFrame = target
+            highlightWindow.updateFrame(to: target)
+            return
+        }
+
+        guard let from = displayedBorderFrame, from != target else {
+            // First reveal, or a settings-change repaint in place.
+            borderAnimationTimer?.invalidate()
+            borderAnimationTimer = nil
+            displayedBorderFrame = target
+            highlightWindow.updateFrame(to: target)
+            return
+        }
+
+        borderAnimationTimer?.invalidate()
+        borderAnimationTimer = makeGlideTimer(from: from, to: target) { [weak self] rect, finished in
+            guard let self else { return }
+            self.displayedBorderFrame = rect
+            self.highlightWindow.updateFrame(to: rect)
+            if finished {
+                self.borderAnimationTimer = nil
+            }
+        }
+    }
+
+    // Drives a smoothstep interpolation between two rects at 60 Hz; the
+    // closure receives each intermediate rect and finally the target with
+    // finished == true.
+    private func makeGlideTimer(from: CGRect, to target: CGRect, apply: @escaping (CGRect, Bool) -> Void) -> Timer {
+        let start = Date().timeIntervalSinceReferenceDate
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { timer in
+            let t = (Date().timeIntervalSinceReferenceDate - start) / Defaults.moveAnimationDuration
             if t >= 1 {
                 timer.invalidate()
-                self.spotlightAnimationTimer = nil
-                self.displayedCutout = target
-                self.updateDimWindows(cutout: target)
+                apply(target, true)
             } else {
                 let e = CGFloat(t * t * (3 - 2 * t))
-                let r = CGRect(
+                apply(CGRect(
                     x: from.minX + (target.minX - from.minX) * e,
                     y: from.minY + (target.minY - from.minY) * e,
                     width: from.width + (target.width - from.width) * e,
                     height: from.height + (target.height - from.height) * e
-                )
-                self.displayedCutout = r
-                self.updateDimWindows(cutout: r)
+                ), false)
             }
         }
         RunLoop.current.add(timer, forMode: .common)
-        spotlightAnimationTimer = timer
+        return timer
     }
 
     private func updateDimWindows(cutout: CGRect) {
