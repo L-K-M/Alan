@@ -442,17 +442,30 @@ class FocusHighlighter {
         return CFBooleanGetValue((value as! CFBoolean))
     }
 
-    private func frontmostAppFocusedWindow() -> AXUIElement? {
-        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
-
-        var window: CFTypeRef?
-        let err = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &window)
-        guard err == .success,
-              let window,
-              CFGetTypeID(window) == AXUIElementGetTypeID()
+    private func elementAttribute(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXUIElementGetTypeID()
         else { return nil }
-        return (window as! AXUIElement)
+        return (value as! AXUIElement)
+    }
+
+    private func focusedWindowOfProcess(owning element: AXUIElement) -> AXUIElement? {
+        var pid: pid_t = 0
+        guard AXUIElementGetPid(element, &pid) == .success, pid > 0 else { return nil }
+        let appElement = AXUIElementCreateApplication(pid)
+        return elementAttribute(appElement, kAXFocusedWindowAttribute as String)
+    }
+
+    private func isWindowLike(_ element: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &value) == .success,
+              let role = value as? String
+        else { return false }
+        return role == kAXWindowRole as String
+            || role == kAXSheetRole as String
+            || role == kAXDrawerRole as String
     }
 
     // Hello, darkness, my old friend. I'm still really bad at this API.
@@ -472,28 +485,27 @@ class FocusHighlighter {
         }
         let element = focusedElement as! AXUIElement
 
-        // If focus is a child, ask for its window
-        var windowElement: CFTypeRef?
-        let windowErr = AXUIElementCopyAttributeValue(
-            element,
-            kAXWindowAttribute as CFString,
-            &windowElement
-        )
-
+        // If focus is a child element, resolve the window containing it.
+        // AXWindow is the direct answer when present. Sheets and drawers
+        // expose AXTopLevelUIElement instead, and the save/open panels live
+        // in an out-of-process panel service — for those, the element's own
+        // process (not the frontmost app, which is the host) knows its
+        // focused window. If nothing window-like can be found, draw nothing:
+        // a border hugging a text field or overrunning a dialog along some
+        // inner scroll area's frame is worse than no border for a moment.
         let targetElement: AXUIElement
-        if windowErr == .success,
-           let windowElement,
-           CFGetTypeID(windowElement) == AXUIElementGetTypeID() {
-            targetElement = (windowElement as! AXUIElement)
-        } else if let appWindow = frontmostAppFocusedWindow() {
-            // Some apps (Chrome in native full screen, notably) don't expose
-            // AXWindow on the focused element. The app's focused window is a
-            // better fallback than the element itself, whose frame can be an
-            // inner content area — that put the border around the web page
-            // instead of the window.
-            targetElement = appWindow
-        } else {
+        if let window = elementAttribute(element, kAXWindowAttribute as String) {
+            targetElement = window
+        } else if let topLevel = elementAttribute(element, kAXTopLevelUIElementAttribute as String) {
+            targetElement = topLevel
+        } else if let focusedWindow = focusedWindowOfProcess(owning: element) {
+            targetElement = focusedWindow
+        } else if isWindowLike(element) {
+            // Some apps report the bare window as the focused element when
+            // no control has focus; that one is fine to use directly.
             targetElement = element
+        } else {
+            return nil
         }
 
         var frameValue: CFTypeRef?
