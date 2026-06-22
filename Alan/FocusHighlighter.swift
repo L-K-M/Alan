@@ -288,7 +288,16 @@ class FocusHighlighter {
 
         // Registered on the application element, the window notifications
         // are delivered for all of the app's windows.
+        //
+        // kAXWindowCreated is what catches a window that opens already
+        // focused — a dialog like Finder's "an item named … already exists,
+        // do you want to replace it?" prompt, say. AXFocusedWindowChanged
+        // fires when focus moves between windows that already exist, but a
+        // brand-new window that becomes active the instant it appears often
+        // posts only AXWindowCreated; without it that window, though active,
+        // never triggers a refresh and so never gets a border.
         let notifications = [
+            kAXWindowCreatedNotification,
             kAXFocusedWindowChangedNotification,
             kAXWindowMovedNotification,
             kAXWindowResizedNotification,
