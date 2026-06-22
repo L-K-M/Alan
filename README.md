@@ -8,7 +8,7 @@ always see where your keyboard input is going.
 > [!IMPORTANT]
 > LLM Disclosure: Much of this code base was written by or with the help of large language models.
 
-**Latest release:** v<!-- version -->2.6.0<!-- /version --> · [Download](https://github.com/L-K-M/Alan/releases/latest)
+**Latest release:** v<!-- version -->2.6.1<!-- /version --> · [Download](https://github.com/L-K-M/Alan/releases/latest)
 
 ## About this fork
 
