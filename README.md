@@ -52,7 +52,11 @@ Grab `Alan-<version>.zip` from the
 so on first launch right-click the app and choose **Open** (or run
 `xattr -d com.apple.quarantine /Applications/Alan.app`).
 
-Or build it yourself: open `Alan.xcodeproj` in Xcode and hit Run.
+Or build it yourself: open `Alan.xcodeproj` in Xcode and hit Run, or
+run `./scripts/build.sh` to build `Alan.app` from the command line — it
+does an incremental Release build and reveals the app in Finder when it
+finishes. Pass `--clean` for a fresh build, or `--run`, `--install`, or
+`--debug` as needed.
 
 ## Configuration
 
