@@ -78,8 +78,8 @@ struct Key {
         darkMode, showFrameWhileDragging, excludedApps, hideBorderWhenMaximized,
         focusPulse, perAppColors, spotlightMode, findMyWindowHotkey, partyMode,
         spotlightDimLevel, animateMovement, moveAnimationDuration,
-        findMyWindowKeyCode, findMyWindowModifiers, shakeToFind, paused,
-        borderStyle
+        findMyWindowKeyCode, findMyWindowModifiers, shakeToFind,
+        flashOnSpaceChange, paused, borderStyle
     ]
 }
 
