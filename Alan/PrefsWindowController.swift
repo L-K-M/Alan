@@ -493,6 +493,19 @@ class PrefsWindowController: NSWindowController {
         shortcutRecorder.registrationFailed = FocusHighlighter.shared.hotkeyRegistrationFailed
         shortcutRecorder.refreshTitle()
 
+        // The status menu's "Exclude <app>" writes to defaults directly. If
+        // this window is open at the time, the private copy must follow —
+        // otherwise the table shows a stale list and, worse, the next Remove
+        // here would write that stale copy back over defaults, silently
+        // undoing the exclusion the menu just added.
+        let storedExclusions = defaults.stringArray(forKey: Key.excludedApps) ?? []
+        if storedExclusions != excludedApps {
+            excludedApps = storedExclusions
+            excludedAppsTableView.reloadData()
+            // reloadData drops the selection; keep the button honest.
+            excludedRemoveButton.isEnabled = excludedAppsTableView.selectedRow >= 0
+        }
+
         previewView.needsDisplay = true
     }
 
