@@ -67,6 +67,27 @@ class PrefsWindowController: NSWindowController {
             name: UserDefaults.didChangeNotification,
             object: nil
         )
+
+        // Reflect a failed (in-use) hotkey registration in the recorder.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(defaultsChanged),
+            name: FocusHighlighter.hotkeyRegistrationDidChange,
+            object: nil
+        )
+
+        // If the window closes mid-recording, tear the capture down so its
+        // local key monitor doesn't linger and swallow keystrokes.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(prefsWindowWillClose),
+            name: NSWindow.willCloseNotification,
+            object: window
+        )
+    }
+
+    @objc private func prefsWindowWillClose() {
+        shortcutRecorder.cancelRecording()
     }
 
     private func buildUI() {
@@ -424,6 +445,7 @@ class PrefsWindowController: NSWindowController {
             : nil
 
         shortcutRecorder.isEnabled = defaults.bool(forKey: Key.findMyWindowHotkey)
+        shortcutRecorder.registrationFailed = FocusHighlighter.shared.hotkeyRegistrationFailed
         shortcutRecorder.refreshTitle()
 
         previewView.needsDisplay = true
@@ -707,6 +729,12 @@ final class ShortcutRecorderButton: NSButton {
     private var keyMonitor: Any?
     private var isRecording = false
 
+    // Set by the prefs controller from FocusHighlighter's registration state:
+    // true means the recorded combo is already claimed by another app.
+    var registrationFailed = false {
+        didSet { if oldValue != registrationFailed { refreshTitle() } }
+    }
+
     convenience init() {
         self.init(frame: .zero)
         bezelStyle = .rounded
@@ -719,9 +747,25 @@ final class ShortcutRecorderButton: NSButton {
     func refreshTitle() {
         if isRecording {
             title = "Type shortcut…"
+            toolTip = nil
+            return
+        }
+        let label = UserDefaults.standard.string(forKey: Key.findMyWindowShortcutLabel)
+            ?? Defaults.findMyWindowDefaultLabel
+        if registrationFailed {
+            title = "\(label) — in use"
+            toolTip = "This shortcut is already used by another app. Record a different one."
         } else {
-            title = UserDefaults.standard.string(forKey: Key.findMyWindowShortcutLabel)
-                ?? Defaults.findMyWindowDefaultLabel
+            title = label
+            toolTip = nil
+        }
+    }
+
+    // Cancel an in-progress recording (e.g. the window is closing) so the
+    // local key monitor isn't left installed, silently swallowing keystrokes.
+    func cancelRecording() {
+        if isRecording {
+            endRecording()
         }
     }
 
@@ -731,6 +775,10 @@ final class ShortcutRecorderButton: NSButton {
 
     private func beginRecording() {
         isRecording = true
+        // Suspend the active Carbon hotkey so the combo the user types reaches
+        // this monitor instead of being consumed system-wide (which would fire
+        // the hotkey and make the current combo impossible to re-record).
+        FocusHighlighter.shared.suspendHotkeyForRecording()
         refreshTitle()
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -763,6 +811,9 @@ final class ShortcutRecorderButton: NSButton {
         }
         keyMonitor = nil
         isRecording = false
+        // Re-register with whatever combo was just recorded (or the previous
+        // one if the user cancelled).
+        FocusHighlighter.shared.resumeHotkeyAfterRecording()
         refreshTitle()
     }
 
