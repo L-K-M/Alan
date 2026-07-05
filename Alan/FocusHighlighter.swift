@@ -458,6 +458,18 @@ class FocusHighlighter {
         // While the flash is running it owns the highlight window.
         guard flashTimer == nil else { return }
 
+        // Paused: hide everything and stop. flashBorder is intentionally left
+        // working, so the find-my-window hotkey can still peek at the window
+        // while paused. Toggled from the status menu or `defaults write`.
+        if UserDefaults.standard.bool(forKey: Key.paused) {
+            if highlightVisible {
+                hideHighlight()
+                lastFrame = nil
+            }
+            lastFocusedWindow = nil
+            return
+        }
+
         // Never point the AX machinery at ourselves. We know where our own
         // windows are without asking, and — worse — when our open/save
         // panel is up, the focused element belongs to the panel service,

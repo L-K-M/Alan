@@ -56,4 +56,5 @@ struct Key {
     static let findMyWindowModifiers = "findMyWindowModifiers"
     static let findMyWindowShortcutLabel = "findMyWindowShortcutLabel"
     static let shakeToFind = "shakeToFind"
+    static let paused = "paused"
 }
