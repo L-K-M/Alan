@@ -14,6 +14,10 @@ struct Defaults {
     static let screenFillTolerance: CGFloat = 5
     static let focusPulseDuration: TimeInterval = 0.5
     static let focusPulsePeak: CGFloat = 2.5
+    // Fraction of the pulse spent ramping up to the peak (~4 frames at
+    // 60 Hz) before the ease-out takes over; a single-frame attack reads
+    // as a flicker.
+    static let focusPulseAttackFraction: Double = 0.12
     static let spotlightDimAlpha: Double = 0.45
     // The corner radius of a standard macOS window (~10 pt since Big Sur).
     // There's no public API for it; used to round the spotlight cut-out so

@@ -35,7 +35,20 @@ class HighlightWindow: NSWindow {
         self.contentView = HighlightView(frame: .zero)
     }
     
-    static let shadowMargin: CGFloat = 25
+    // Room the overlay leaves around the window frame for drawing that
+    // extends past it. The stroke alone needs at most 25 pt (width 20 at the
+    // 2.5× pulse peak → half-width 25, less the ≥1 pt inset). The soft
+    // effects need more — the glow's 12 pt blur, the stronger shadow's
+    // 25 pt blur + 3 pt offset — and used to clip against the constant
+    // margin in a hard straight edge. Computed from the enabled effects so
+    // the halo gets its room, and the backing store only grows when the
+    // user opted into one.
+    static var shadowMargin: CGFloat {
+        var margin: CGFloat = 25
+        if UserDefaults.standard.bool(forKey: Key.glowingBorder) { margin += 15 }
+        if UserDefaults.standard.bool(forKey: Key.strongerShadow) { margin += 30 }
+        return margin
+    }
 
     func updateFrame(to rect: CGRect) {
         let margin = HighlightWindow.shadowMargin
@@ -125,8 +138,19 @@ class HighlightWindow: NSWindow {
                 timer.invalidate()
                 self.pulseTimer = nil
             } else {
-                // Ease-out: start thick, settle quickly.
-                let eased = pow(1 - progress, 2)
+                // A few frames of smoothstep ramp-in, then the ease-out.
+                // Landing at ~2.4× on the very first tick read as a flicker,
+                // not a swell — and the configured peak was never actually
+                // rendered.
+                let attack = Defaults.focusPulseAttackFraction
+                let eased: Double
+                if progress < attack {
+                    let a = progress / attack
+                    eased = a * a * (3 - 2 * a)
+                } else {
+                    let decay = (progress - attack) / (1 - attack)
+                    eased = pow(1 - decay, 2)
+                }
                 view.pulseScale = 1 + (Defaults.focusPulsePeak - 1) * CGFloat(eased)
             }
             view.needsDisplay = true
@@ -234,8 +258,10 @@ class HighlightView: NSView {
             NSGraphicsContext.current?.saveGraphicsState()
 
             // Clip to the region outside the border so the shadow doesn't
-            // darken the window itself.
-            let outerClipPath = NSBezierPath(rect: windowRect.insetBy(dx: -50, dy: -50))
+            // darken the window itself. The outer rect only needs to cover
+            // everything drawable; -100 comfortably exceeds the largest
+            // shadowMargin.
+            let outerClipPath = NSBezierPath(rect: windowRect.insetBy(dx: -100, dy: -100))
 
             let innerExcludePath: NSBezierPath
             let halfWidth = effectiveWidth / 2.0
@@ -262,8 +288,13 @@ class HighlightView: NSView {
             NSGraphicsContext.current?.restoreGraphicsState()
         }
 
-        // Draw glow if enabled
-        if UserDefaults.standard.bool(forKey: Key.glowingBorder) {
+        // Draw glow if enabled. The glow pass strokes the path in the final
+        // border color (the shadow needs the stroke's alpha to bloom from),
+        // so it doubles as the main stroke: stroking again below would
+        // composite translucent colors twice — a 50 % alpha border rendered
+        // at ~75 % the moment glow was toggled on.
+        let glowOn = UserDefaults.standard.bool(forKey: Key.glowingBorder)
+        if glowOn {
             NSGraphicsContext.current?.saveGraphicsState()
             let glowShadow = NSShadow()
             glowShadow.shadowColor = color.withAlphaComponent(0.8)
@@ -273,11 +304,11 @@ class HighlightView: NSView {
             color.setStroke()
             path.stroke()
             NSGraphicsContext.current?.restoreGraphicsState()
+        } else {
+            // The main border stroke
+            color.setStroke()
+            path.stroke()
         }
-
-        // The main border stroke
-        color.setStroke()
-        path.stroke()
     }
 
     // MARK: - Hand-drawn wobble
