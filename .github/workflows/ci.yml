@@ -3,9 +3,17 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md', 'screenshot.png', 'LICENSE']
   pull_request:
+    paths-ignore: ['**.md', 'screenshot.png', 'LICENSE']
   # Allows compile-checking long-lived feature branches that don't have a PR.
   workflow_dispatch:
+
+# A newer push to the same ref supersedes an in-flight build; macOS runners
+# bill at 10x, so don't leave superseded builds running.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:

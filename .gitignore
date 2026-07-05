@@ -14,7 +14,9 @@ Icon?
 *.xcodeproj/project.xcworkspace/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/xcshareddata/WorkspaceSettings.xcsettings
-*.xcodeproj/xcshareddata/xcschemes/*
+# NB: do not ignore xcshareddata/xcschemes — the shared Alan.xcscheme lives
+# there and CI builds with `-scheme Alan`. Only per-user schemes (under
+# xcuserdata) should be ignored, and they are, below.
 *.xcodeproj/xcuserdata/*
 DerivedData/
 build/
