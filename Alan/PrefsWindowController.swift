@@ -40,7 +40,8 @@ class PrefsWindowController: NSWindowController {
 
     // MARK: - Excluded-apps tab controls
 
-    private let excludedAppsTableView = NSTableView()
+    private let excludedAppsTableView = DeletableTableView()
+    private let excludedRemoveButton = NSButton(title: "Remove", target: nil, action: nil)
     private var excludedApps: [String] = []
 
     // MARK: - Setup
@@ -52,7 +53,7 @@ class PrefsWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Alan"
+        window.title = "Alan Settings"
         window.isReleasedWhenClosed = false
         self.init(window: window)
         window.center()
@@ -108,11 +109,11 @@ class PrefsWindowController: NSWindowController {
         previewView.layer?.masksToBounds = true
         view.addSubview(previewView)
 
-        let widthField = makeNumberField(boundTo: Key.width)
+        let widthField = makeNumberField(boundTo: Key.width, min: 1, max: 20)
         let widthStepper = makeStepper(boundTo: Key.width, min: 1, max: 20)
-        let insetField = makeNumberField(boundTo: Key.inset)
+        let insetField = makeNumberField(boundTo: Key.inset, min: 1, max: 20)
         let insetStepper = makeStepper(boundTo: Key.inset, min: 1, max: 20)
-        let radiusField = makeNumberField(boundTo: Key.cornerRadius)
+        let radiusField = makeNumberField(boundTo: Key.cornerRadius, min: 0, max: 50)
         let radiusStepper = makeStepper(boundTo: Key.cornerRadius, min: 0, max: 50)
 
         lightModeColorWell.target = self
@@ -253,10 +254,15 @@ class PrefsWindowController: NSWindowController {
         excludedAppsTableView.addTableColumn(column)
         excludedAppsTableView.headerView = nil
         excludedAppsTableView.rowHeight = 22
-        excludedAppsTableView.allowsMultipleSelection = false
+        excludedAppsTableView.allowsMultipleSelection = true
         excludedAppsTableView.delegate = self
         excludedAppsTableView.dataSource = self
         excludedAppsTableView.registerForDraggedTypes([.fileURL])
+        // Delete/⌫ removes the selection, the standard Mac list gesture.
+        excludedAppsTableView.onDelete = { [weak self] in
+            guard let self else { return }
+            self.removeExcludedApp(self)
+        }
 
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -265,7 +271,10 @@ class PrefsWindowController: NSWindowController {
         scrollView.borderType = .bezelBorder
 
         let addButton = NSButton(title: "Add App…", target: self, action: #selector(addExcludedApp(_:)))
-        let removeButton = NSButton(title: "Remove", target: self, action: #selector(removeExcludedApp(_:)))
+        let removeButton = excludedRemoveButton
+        removeButton.target = self
+        removeButton.action = #selector(removeExcludedApp(_:))
+        removeButton.isEnabled = false      // nothing is selected yet
         addButton.translatesAutoresizingMaskIntoConstraints = false
         removeButton.translatesAutoresizingMaskIntoConstraints = false
 
@@ -307,11 +316,16 @@ class PrefsWindowController: NSWindowController {
         return label
     }
 
-    private func makeNumberField(boundTo key: String) -> NSTextField {
+    private func makeNumberField(boundTo key: String, min: Int, max: Int) -> NSTextField {
         let field = NSTextField()
         field.translatesAutoresizingMaskIntoConstraints = false
         let formatter = NumberFormatter()
         formatter.allowsFloats = false
+        // Match the paired stepper's range so a typed-in value can't diverge
+        // from what the draw code clamps to — the formatter rejects
+        // out-of-range entry at commit time.
+        formatter.minimum = NSNumber(value: min)
+        formatter.maximum = NSNumber(value: max)
         field.formatter = formatter
         field.bind(
             .value,
@@ -499,12 +513,16 @@ class PrefsWindowController: NSWindowController {
     }
 
     @objc func removeExcludedApp(_ sender: Any) {
-        let selectedRow = excludedAppsTableView.selectedRow
-        guard selectedRow >= 0 && selectedRow < excludedApps.count else { return }
+        let selected = excludedAppsTableView.selectedRowIndexes
+        guard !selected.isEmpty else { return }
 
-        excludedApps.remove(at: selectedRow)
+        // Remove back-to-front so earlier indices stay valid.
+        for row in selected.sorted(by: >) where row < excludedApps.count {
+            excludedApps.remove(at: row)
+        }
         UserDefaults.standard.set(excludedApps, forKey: Key.excludedApps)
         excludedAppsTableView.reloadData()
+        excludedRemoveButton.isEnabled = false
     }
 
     private func addExcludedAppWithBundleId(_ bundleIdentifier: String) {
@@ -553,17 +571,27 @@ extension PrefsWindowController: NSTableViewDelegate, NSTableViewDataSource {
             ])
         }
 
-        // Get app name and icon from bundle identifier
+        // Get app name and icon from bundle identifier. Cells are reused, so
+        // both branches must set every attribute they touch.
         if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
-            let appName = FileManager.default.displayName(atPath: appURL.path)
-            cellView?.textField?.stringValue = appName
+            cellView?.textField?.stringValue = FileManager.default.displayName(atPath: appURL.path)
+            cellView?.textField?.textColor = .labelColor
             cellView?.imageView?.image = NSWorkspace.shared.icon(forFile: appURL.path)
+            cellView?.toolTip = nil
         } else {
+            // App not installed: show the bundle ID muted, with a generic app
+            // icon and a tooltip, so the row reads as inert rather than broken.
             cellView?.textField?.stringValue = bundleIdentifier
-            cellView?.imageView?.image = nil
+            cellView?.textField?.textColor = .secondaryLabelColor
+            cellView?.imageView?.image = NSWorkspace.shared.icon(for: .applicationBundle)
+            cellView?.toolTip = "Not currently installed (\(bundleIdentifier))"
         }
 
         return cellView
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        excludedRemoveButton.isEnabled = excludedAppsTableView.selectedRow >= 0
     }
 
     // MARK: Drag and drop
@@ -591,6 +619,22 @@ extension PrefsWindowController: NSTableViewDelegate, NSTableViewDataSource {
         let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
         let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL] ?? []
         return urls.filter { $0.pathExtension == "app" }
+    }
+}
+
+// MARK: - Excluded-apps table view
+
+// An NSTableView that reports Delete/Forward-Delete presses, so the standard
+// Mac gesture for removing a list row works.
+final class DeletableTableView: NSTableView {
+    var onDelete: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        if Int(event.keyCode) == kVK_Delete || Int(event.keyCode) == kVK_ForwardDelete {
+            onDelete?()
+        } else {
+            super.keyDown(with: event)
+        }
     }
 }
 
