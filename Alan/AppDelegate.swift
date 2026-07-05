@@ -177,10 +177,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.orderFrontStandardAboutPanel(nil)
     }
 
-    // Clicking the Dock icon with no window open should open Preferences —
-    // otherwise the click appears to do nothing.
+    // Clicking the Dock icon with no window open should open Settings —
+    // otherwise the click appears to do nothing. hasVisibleWindows can't
+    // make that call: the border overlay (and the spotlight dim windows)
+    // are visible NSWindows nearly all of the time, so the flag reads true
+    // even when there is nothing the user could actually interact with.
+    // Decide off the Settings window itself instead.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
+        if prefsWindowController.window?.isVisible != true {
             showPrefs(nil)
         }
         return true
