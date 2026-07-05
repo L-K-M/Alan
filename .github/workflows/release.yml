@@ -39,21 +39,35 @@ jobs:
           else
             TAG="$GITHUB_REF_NAME"
           fi
+          # Reject anything that isn't v<major>.<minor>[.<patch>] before it
+          # reaches a shell interpolation or a malformed `gh release` call.
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error::Invalid version tag '$TAG' (expected vX.Y or vX.Y.Z)"
+            exit 1
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build (Release, ad-hoc signed)
         # The version is stamped into the app's CFBundleShortVersionString
-        # via MARKETING_VERSION. CI has no certificates for the project's
-        # development team, so override automatic signing with an ad-hoc
-        # identity ("-").
+        # via MARKETING_VERSION, and the CI run number into CFBundleVersion
+        # (CURRENT_PROJECT_VERSION) so each release has a distinct build
+        # number — otherwise every release ships CFBundleVersion 1, which
+        # confuses LaunchServices and any future update mechanism. CI has no
+        # certificates for the project's development team, so override
+        # automatic signing with an ad-hoc identity ("-"). Values come in via
+        # env vars, not string interpolation, so a crafted version input
+        # can't reach the shell.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           xcodebuild build \
             -project Alan.xcodeproj \
             -scheme Alan \
             -configuration Release \
             -derivedDataPath build \
-            MARKETING_VERSION="${{ steps.version.outputs.version }}" \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY=- \
             DEVELOPMENT_TEAM=
@@ -61,7 +75,9 @@ jobs:
       - name: Zip the app
         # ditto preserves symlinks, resource forks, and permissions — the
         # reliable way to zip a .app bundle.
-        run: ditto -c -k --keepParent build/Build/Products/Release/Alan.app "Alan-${{ steps.version.outputs.tag }}.zip"
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: ditto -c -k --keepParent build/Build/Products/Release/Alan.app "Alan-${TAG}.zip"
 
       - name: Create GitHub release
         # On tag pushes the tag already exists; on manual dispatch
