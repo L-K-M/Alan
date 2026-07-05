@@ -33,9 +33,17 @@ class HighlightWindow: NSWindow {
     func updateFrame(to rect: CGRect) {
         let margin = HighlightWindow.shadowMargin
         let newRect = rect.insetBy(dx: -margin, dy: -margin)
-        setFrame(newRect, display: true)
-        self.contentView?.setNeedsDisplay(.infinite)
-        orderFrontRegardless()
+        // display: false + a single needsDisplay coalesces to one draw per
+        // run-loop pass; setFrame(display: true) would draw synchronously and
+        // the explicit invalidation would then schedule a second full redraw.
+        setFrame(newRect, display: false)
+        contentView?.needsDisplay = true
+        // The overlay sits at .statusBar level, above all normal windows, so it
+        // stays on top without re-ordering every glide tick; only re-front when
+        // it isn't already showing.
+        if !isVisible {
+            orderFrontRegardless()
+        }
     }
 
     // MARK: - Party mode
@@ -240,13 +248,39 @@ class DimWindow: NSWindow {
         self.contentView = DimView(frame: .zero)
     }
 
+    // The inputs the DimView actually draws from, so an unchanged update can
+    // be skipped without missing a live settings change (dim level, radius).
+    private var lastCutout: CGRect?
+    private var lastDimLevel: Double = .nan
+    private var lastCornerRadius: Int = .min
+
     // cutout is in global Cocoa coordinates; nil dims the whole screen.
     func update(screenFrame: CGRect, cutout: CGRect?) {
-        setFrame(screenFrame, display: true)
-        if let view = contentView as? DimView {
-            view.cutout = cutout?.offsetBy(dx: -screenFrame.minX, dy: -screenFrame.minY)
+        let localCutout = cutout?.offsetBy(dx: -screenFrame.minX, dy: -screenFrame.minY)
+        let dimLevel = UserDefaults.standard.double(forKey: Key.spotlightDimLevel)
+        let cornerRadius = UserDefaults.standard.integer(forKey: Key.cornerRadius)
+
+        // During a glide most screens are untouched frame to frame; skip the
+        // full-screen repaint and window-ordering transaction when none of the
+        // draw inputs changed. Refilling a 5K backing store 60×/s per display
+        // for no reason was the app's single largest cost. The dim-level and
+        // radius checks keep a live settings change from being skipped.
+        if isVisible,
+           frame == screenFrame,
+           lastCutout == localCutout,
+           lastDimLevel == dimLevel,
+           lastCornerRadius == cornerRadius {
+            return
         }
-        contentView?.setNeedsDisplay(.infinite)
+        lastCutout = localCutout
+        lastDimLevel = dimLevel
+        lastCornerRadius = cornerRadius
+
+        setFrame(screenFrame, display: false)
+        if let view = contentView as? DimView {
+            view.cutout = localCutout
+        }
+        contentView?.needsDisplay = true
         orderFrontRegardless()
     }
 }

@@ -43,6 +43,13 @@ class PrefsWindowController: NSWindowController {
     private let excludedAppsTableView = NSTableView()
     private var excludedApps: [String] = []
 
+    // Cached launch-at-login state. SMAppService.mainApp.status is an XPC
+    // round-trip, so it's read once and refreshed only when it can actually
+    // change (this checkbox, or the window regaining key), not on every
+    // defaults notification. Coalesces slider-drag notification storms too.
+    private var launchAtLoginEnabled = false
+    private var syncScheduled = false
+
     // MARK: - Setup
 
     convenience init() {
@@ -66,6 +73,21 @@ class PrefsWindowController: NSWindowController {
             name: UserDefaults.didChangeNotification,
             object: nil
         )
+
+        // Login-item state can change in System Settings while we're not
+        // frontmost; re-read it when the window regains key rather than
+        // polling it on every defaults change.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(refreshLaunchAtLoginStatus),
+            name: NSWindow.didBecomeKeyNotification,
+            object: window
+        )
+    }
+
+    @objc private func refreshLaunchAtLoginStatus() {
+        launchAtLoginEnabled = (SMAppService.mainApp.status == .enabled)
+        launchAtLoginCheckbox.state = launchAtLoginEnabled ? .on : .off
     }
 
     private func buildUI() {
@@ -364,11 +386,20 @@ class PrefsWindowController: NSWindowController {
         excludedApps = UserDefaults.standard.stringArray(forKey: Key.excludedApps) ?? []
         excludedAppsTableView.reloadData()
 
+        launchAtLoginEnabled = (SMAppService.mainApp.status == .enabled)
         syncDynamicUI()
     }
 
     @objc private func defaultsChanged() {
-        syncDynamicUI()
+        // A continuous slider or color-well drag posts many notifications per
+        // second; collapse them into one UI resync per run-loop turn.
+        guard !syncScheduled else { return }
+        syncScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.syncScheduled = false
+            self.syncDynamicUI()
+        }
     }
 
     private func syncDynamicUI() {
@@ -384,7 +415,7 @@ class PrefsWindowController: NSWindowController {
         glowingBorderCheckbox.state = defaults.bool(forKey: Key.glowingBorder) ? .on : .off
         strongerShadowCheckbox.state = defaults.bool(forKey: Key.strongerShadow) ? .on : .off
         partyModeCheckbox.state = defaults.bool(forKey: Key.partyMode) ? .on : .off
-        launchAtLoginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        launchAtLoginCheckbox.state = launchAtLoginEnabled ? .on : .off
 
         animateMovementCheckbox.state = defaults.bool(forKey: Key.animateMovement) ? .on : .off
         glideDurationSlider.isEnabled = defaults.bool(forKey: Key.animateMovement)
@@ -479,7 +510,7 @@ class PrefsWindowController: NSWindowController {
         } catch {
             NSSound.beep()
         }
-        sender.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        refreshLaunchAtLoginStatus()
     }
 
     @objc func addExcludedApp(_ sender: Any) {
@@ -611,8 +642,13 @@ final class BorderPreviewView: NSView {
         guard window != nil else { return }
 
         let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
-            self?.needsDisplay = true
+            // The view stays installed in the (ordered-out) window after it's
+            // closed, so this timer would otherwise wake the process 30×/s
+            // forever. Only repaint while the window is actually on screen.
+            guard let self, self.window?.isVisible == true else { return }
+            self.needsDisplay = true
         }
+        timer.tolerance = (1.0 / 30.0) * 0.1
         RunLoop.current.add(timer, forMode: .common)
         redrawTimer = timer
     }
