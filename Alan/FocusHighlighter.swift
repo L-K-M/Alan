@@ -80,6 +80,11 @@ class FocusHighlighter {
     private var appearanceObservation: NSKeyValueObservation?
     private var dragMonitor: Any?
     private var dragTimer: Timer?
+    // Ticks of drag polling that saw no window movement; once enough pile
+    // up, this drag isn't a window drag (text selection, a scrollbar) and
+    // polling stops until the next mouse-up.
+    private var dragUnchangedTicks = 0
+    private var dragSuppressedUntilMouseUp = false
     private var forceUpdateScheduled = false
 
     func start() {
@@ -128,6 +133,7 @@ class FocusHighlighter {
             if event.type == .leftMouseDragged {
                 self.startDragTracking()
             } else {
+                self.dragSuppressedUntilMouseUp = false
                 self.stopDragTracking()
                 self.refresh()
             }
@@ -537,10 +543,27 @@ class FocusHighlighter {
     // MARK: - Live drag tracking
 
     private func startDragTracking() {
-        guard dragTimer == nil else { return }
+        guard dragTimer == nil, !dragSuppressedUntilMouseUp else { return }
+        dragUnchangedTicks = 0
 
         let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
-            self?.refresh()
+            guard let self else { return }
+            let frameBefore = self.lastFrame
+            self.refresh()
+            // Most drags never move a window — text selection, scrollbars,
+            // brush strokes. Once a third of a second of polling has seen no
+            // window movement, this drag isn't a window drag: stop paying
+            // 30 Hz of AX round-trips (and, in spotlight mode, repaints) for
+            // it, and stand down until the mouse button goes back up.
+            if self.lastFrame == frameBefore {
+                self.dragUnchangedTicks += 1
+                if self.dragUnchangedTicks >= 10 {
+                    self.stopDragTracking()
+                    self.dragSuppressedUntilMouseUp = true
+                }
+            } else {
+                self.dragUnchangedTicks = 0
+            }
         }
         timer.tolerance = 0.01
         RunLoop.current.add(timer, forMode: .common)
@@ -640,6 +663,18 @@ class FocusHighlighter {
         resolutionRetryCount = 0
 
         let cocoaFrame = cocoaRect(fromAXRect: axFrame)
+
+        // Steady state: same window, same frame, border already drawn —
+        // nothing below can change the outcome. Return before the
+        // AXFullScreen read, an IPC round-trip into the frontmost app that
+        // notification storms and drag ticks would otherwise pay every time.
+        // (Anything that invalidates the outcome also clears one of these
+        // flags: settings changes go through forceUpdate, which drops
+        // frameIsDrawn; frame and focus changes miss the comparisons.)
+        if frameIsDrawn, drawFrame, lastFrame == cocoaFrame,
+           isSameWindow(windowElement, lastFocusedWindow) {
+            return
+        }
 
         // Native full-screen windows never get a border: nothing else is
         // visible on their Space to tell focus apart from. Split View tiles
