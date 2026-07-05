@@ -47,6 +47,7 @@ class FocusHighlighter {
 
     private var workspaceObserver: NSObjectProtocol?
     private var defaultsObserver: NSObjectProtocol?
+    private var accessibilityObserver: NSObjectProtocol?
     private var appearanceObservation: NSKeyValueObservation?
     private var dragMonitor: Any?
     private var dragTimer: Timer?
@@ -104,6 +105,23 @@ class FocusHighlighter {
                 self?.forceUpdate()
             }
         }
+
+        // Apply a Reduce Motion (or other accessibility display) change the
+        // moment it's toggled, so the glide/pulse/party guards below take
+        // effect without waiting for the next window event.
+        accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didChangeAccessibilityDisplayOptionsNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.forceUpdate()
+        }
+    }
+
+    // Honor the system Reduce Motion setting across every animation. Read live
+    // (not cached) so the accessibility observer above needs only to repaint.
+    static var reduceMotion: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
 
     func forceUpdate() {
@@ -242,6 +260,21 @@ class FocusHighlighter {
 
         flashCount = 0
         highlightWindow.updateFrame(to: frame)
+
+        // Under Reduce Motion, a ~4 Hz on/off strobe is exactly what to avoid.
+        // Reveal the border once and hold it, then restore what the settings
+        // say. Still finds the window; just without the flashing.
+        if Self.reduceMotion {
+            let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+                guard let self else { return }
+                self.flashTimer = nil
+                self.frameIsDrawn = false
+                self.refresh()
+            }
+            RunLoop.current.add(timer, forMode: .common)
+            flashTimer = timer
+            return
+        }
 
         let timer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] timer in
             guard let self else {
@@ -506,7 +539,7 @@ class FocusHighlighter {
     // add lag) and when the animate-movement preference is off.
 
     private func moveSpotlight(to target: CGRect) {
-        if dragTimer != nil || !UserDefaults.standard.bool(forKey: Key.animateMovement) {
+        if dragTimer != nil || Self.reduceMotion || !UserDefaults.standard.bool(forKey: Key.animateMovement) {
             spotlightAnimationTimer?.invalidate()
             spotlightAnimationTimer = nil
             displayedCutout = target
@@ -536,7 +569,7 @@ class FocusHighlighter {
     }
 
     private func moveBorder(to target: CGRect) {
-        if dragTimer != nil || !UserDefaults.standard.bool(forKey: Key.animateMovement) {
+        if dragTimer != nil || Self.reduceMotion || !UserDefaults.standard.bool(forKey: Key.animateMovement) {
             borderAnimationTimer?.invalidate()
             borderAnimationTimer = nil
             displayedBorderFrame = target
