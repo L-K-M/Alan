@@ -71,7 +71,7 @@ class FocusHighlighter {
     private var borderAnimationTimer: Timer?
 
     private var workspaceObserver: NSObjectProtocol?
-    private var defaultsObserver: NSObjectProtocol?
+    private var defaultsObservation: DefaultsObservationBridge?
     private var accessibilityObserver: NSObjectProtocol?
     private var screenObserver: NSObjectProtocol?
     private var appearanceObservation: NSKeyValueObservation?
@@ -92,16 +92,19 @@ class FocusHighlighter {
         observeFrontmostApp()
 
         // Observed here rather than in the prefs controller, so settings
-        // changed from Terminal via `defaults write` apply immediately even
-        // if the Preferences window has never been opened.
-        defaultsObserver = NotificationCenter.default.addObserver(
-            forName: UserDefaults.didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
+        // apply even if the Preferences window has never been opened. KVO on
+        // the individual keys, not UserDefaults.didChangeNotification: the
+        // notification is only posted for writes made by this process, while
+        // KVO also fires for external ones — which is what actually makes
+        // `defaults write` from Terminal (or Shortcuts, or a Stream Deck
+        // script toggling `paused`) apply immediately.
+        defaultsObservation = DefaultsObservationBridge(keys: Key.allObservedKeys) { [weak self] in
             // Coalesce bursts of writes — a slider or color-well drag fires
-            // continuously — into one forceUpdate per run-loop turn.
-            self?.scheduleForceUpdate()
+            // continuously — into one forceUpdate per run-loop turn. External
+            // changes can be delivered off the main thread; hop over.
+            DispatchQueue.main.async {
+                self?.scheduleForceUpdate()
+            }
         }
 
         // Re-attach the AX observer whenever another app becomes frontmost
@@ -1101,6 +1104,40 @@ class FocusHighlighter {
             && abs(a.minY - b.minY) < tolerance
             && abs(a.width - b.width) < tolerance
             && abs(a.height - b.height) < tolerance
+    }
+}
+
+// Turns changes to a fixed set of defaults keys into a callback.
+// UserDefaults is documented KVO-compliant for defaults keys, and unlike
+// UserDefaults.didChangeNotification the KVO notifications also fire for
+// changes made by other processes. FocusHighlighter isn't an NSObject, so
+// this small bridge hosts the observation for it.
+private final class DefaultsObservationBridge: NSObject {
+    private let keys: [String]
+    private let onChange: () -> Void
+
+    init(keys: [String], onChange: @escaping () -> Void) {
+        self.keys = keys
+        self.onChange = onChange
+        super.init()
+        for key in keys {
+            UserDefaults.standard.addObserver(self, forKeyPath: key, options: [], context: nil)
+        }
+    }
+
+    deinit {
+        for key in keys {
+            UserDefaults.standard.removeObserver(self, forKeyPath: key)
+        }
+    }
+
+    override func observeValue(
+        forKeyPath keyPath: String?,
+        of object: Any?,
+        change: [NSKeyValueChangeKey: Any]?,
+        context: UnsafeMutableRawPointer?
+    ) {
+        onChange()
     }
 }
 

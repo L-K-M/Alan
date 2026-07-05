@@ -58,6 +58,21 @@ struct Key {
     static let shakeToFind = "shakeToFind"
     static let paused = "paused"
     static let borderStyle = "borderStyle"
+
+    // Every key the highlighter reacts to. FocusHighlighter installs a KVO
+    // observer per key so that external writes — `defaults write` from
+    // Terminal, Shortcuts, a dotfiles sync — apply immediately, exactly like
+    // a change made in the Preferences window. (hideDock is absent: the
+    // activation policy is AppDelegate's business; the shortcut label is
+    // UI-only.)
+    static let allObservedKeys: [String] = [
+        width, inset, cornerRadius, glowingBorder, strongerShadow, lightMode,
+        darkMode, showFrameWhileDragging, excludedApps, hideBorderWhenMaximized,
+        focusPulse, perAppColors, spotlightMode, findMyWindowHotkey, partyMode,
+        spotlightDimLevel, animateMovement, moveAnimationDuration,
+        findMyWindowKeyCode, findMyWindowModifiers, shakeToFind, paused,
+        borderStyle
+    ]
 }
 
 // The border's line style. Raw values are the stored defaults strings.
