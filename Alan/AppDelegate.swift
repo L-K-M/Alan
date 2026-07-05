@@ -40,6 +40,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Key.findMyWindowModifiers: Defaults.findMyWindowDefaultModifiers,
             Key.findMyWindowShortcutLabel: Defaults.findMyWindowDefaultLabel,
             Key.shakeToFind: false,
+            Key.flashOnSpaceChange: false,
             Key.spotlightDimLevel: Defaults.spotlightDimAlpha,
             Key.animateMovement: true,
             Key.moveAnimationDuration: Defaults.moveAnimationDuration,

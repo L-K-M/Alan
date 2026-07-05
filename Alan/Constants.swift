@@ -25,6 +25,9 @@ struct Defaults {
     static let shakeWindow: TimeInterval = 0.7
     static let shakeReversalCount = 4
     static let shakeCooldown: TimeInterval = 1.5
+    // Wait for the Space-switch animation to land and focus to settle
+    // before flashing, so the flash samples the arriving Space's window.
+    static let spaceChangeFlashDelay: TimeInterval = 0.2
     // kVK_ANSI_F with controlKey | optionKey | cmdKey — spelled as numbers
     // so Constants doesn't need Carbon.
     static let findMyWindowDefaultKeyCode = 0x03
@@ -56,6 +59,7 @@ struct Key {
     static let findMyWindowModifiers = "findMyWindowModifiers"
     static let findMyWindowShortcutLabel = "findMyWindowShortcutLabel"
     static let shakeToFind = "shakeToFind"
+    static let flashOnSpaceChange = "flashOnSpaceChange"
     static let paused = "paused"
     static let borderStyle = "borderStyle"
 }

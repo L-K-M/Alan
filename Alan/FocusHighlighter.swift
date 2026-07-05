@@ -74,6 +74,7 @@ class FocusHighlighter {
     private var defaultsObserver: NSObjectProtocol?
     private var accessibilityObserver: NSObjectProtocol?
     private var screenObserver: NSObjectProtocol?
+    private var spaceObserver: NSObjectProtocol?
     private var appearanceObservation: NSKeyValueObservation?
     private var dragMonitor: Any?
     private var dragTimer: Timer?
@@ -159,6 +160,22 @@ class FocusHighlighter {
             self.displayedCutout = nil
             self.displayedBorderFrame = nil
             self.forceUpdate()
+        }
+
+        // Switching Spaces causes exactly the disorientation shake-to-find
+        // cures, minus the deliberate gesture: optionally flash the border
+        // on arrival. The short delay lets the switch animation land and
+        // focus settle before the flash samples the focused window; under
+        // Reduce Motion flashBorder already degrades to a single reveal.
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard UserDefaults.standard.bool(forKey: Key.flashOnSpaceChange) else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Defaults.spaceChangeFlashDelay) {
+                self?.flashBorder()
+            }
         }
     }
 
