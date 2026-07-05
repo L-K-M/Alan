@@ -15,6 +15,10 @@ struct Defaults {
     static let focusPulseDuration: TimeInterval = 0.5
     static let focusPulsePeak: CGFloat = 2.5
     static let spotlightDimAlpha: Double = 0.45
+    // The corner radius of a standard macOS window (~10 pt since Big Sur).
+    // There's no public API for it; used to round the spotlight cut-out so
+    // it hugs the focused window instead of leaving bright square corners.
+    static let windowCornerRadius: CGFloat = 10
     static let partyModeCycleDuration: TimeInterval = 6
     static let moveAnimationDuration: TimeInterval = 0.25
     static let shakeMinSwing: CGFloat = 12

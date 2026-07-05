@@ -22,9 +22,16 @@ class HighlightWindow: NSWindow {
         self.backgroundColor = .clear
         self.ignoresMouseEvents = true
         self.level = .statusBar
-        self.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle]
+        // .fullScreenAuxiliary lets the border appear on other apps' full-screen
+        // Spaces — notably Split View tiles, which refresh() deliberately keeps a
+        // border on; .canJoinAllSpaces alone excludes full-screen Spaces.
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         self.isReleasedWhenClosed = false
-        
+        // Keep the border out of screenshots, screen recordings, and screen
+        // shares — a pulsing border broadcast to a whole meeting is a
+        // distraction, not a focus aid.
+        self.sharingType = .none
+
         self.contentView = HighlightView(frame: .zero)
     }
     
@@ -234,8 +241,13 @@ class DimWindow: NSWindow {
         self.backgroundColor = .clear
         self.ignoresMouseEvents = true
         self.level = .statusBar
-        self.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle]
+        // See HighlightWindow: full-screen Spaces (incl. a second display showing
+        // a full-screen app) otherwise stay undimmed, breaking the effect.
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         self.isReleasedWhenClosed = false
+        // The dim shouldn't be captured either — spotlight mode would black out
+        // the whole shared screen otherwise.
+        self.sharingType = .none
 
         self.contentView = DimView(frame: .zero)
     }
@@ -263,13 +275,12 @@ class DimView: NSView {
         // except the cut-out, without any compositing tricks.
         let path = NSBezierPath(rect: bounds)
         if let cutout {
-            var cornerRadius = UserDefaults.standard.integer(forKey: Key.cornerRadius)
-            cornerRadius = max(0, min(50, cornerRadius))
-            if cornerRadius > 0 {
-                path.append(NSBezierPath(roundedRect: cutout, xRadius: CGFloat(cornerRadius), yRadius: CGFloat(cornerRadius)))
-            } else {
-                path.append(NSBezierPath(rect: cutout))
-            }
+            // The cut-out sits on the window frame itself, so it needs to hug
+            // the window's own ~10 pt rounded corners — not the border's
+            // cornerRadius knob, which is tuned for a path inset *inside* the
+            // frame and defaults to 0 (square wedges glowing at the corners).
+            let radius = Defaults.windowCornerRadius
+            path.append(NSBezierPath(roundedRect: cutout, xRadius: radius, yRadius: radius))
             path.windingRule = .evenOdd
         }
 
