@@ -60,9 +60,11 @@ class FocusHighlighter {
     private var workspaceObserver: NSObjectProtocol?
     private var defaultsObserver: NSObjectProtocol?
     private var accessibilityObserver: NSObjectProtocol?
+    private var screenObserver: NSObjectProtocol?
     private var appearanceObservation: NSKeyValueObservation?
     private var dragMonitor: Any?
     private var dragTimer: Timer?
+    private var forceUpdateScheduled = false
 
     func start() {
         // Bound every AX call: the default messaging timeout is several
@@ -84,7 +86,9 @@ class FocusHighlighter {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.forceUpdate()
+            // Coalesce bursts of writes — a slider or color-well drag fires
+            // continuously — into one forceUpdate per run-loop turn.
+            self?.scheduleForceUpdate()
         }
 
         // Re-attach the AX observer whenever another app becomes frontmost
@@ -128,12 +132,37 @@ class FocusHighlighter {
         ) { [weak self] _ in
             self?.forceUpdate()
         }
+
+        // A display attach/detach, resolution, or scaling change leaves the
+        // spotlight window pool sized to the old screen set and the cached
+        // frames in old coordinates. Reconcile, and drop the remembered
+        // positions so the glide doesn't animate from stale ones.
+        screenObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.displayedCutout = nil
+            self.displayedBorderFrame = nil
+            self.forceUpdate()
+        }
     }
 
     // Honor the system Reduce Motion setting across every animation. Read live
     // (not cached) so the accessibility observer above needs only to repaint.
     static var reduceMotion: Bool {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    private func scheduleForceUpdate() {
+        guard !forceUpdateScheduled else { return }
+        forceUpdateScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.forceUpdateScheduled = false
+            self.forceUpdate()
+        }
     }
 
     func forceUpdate() {
