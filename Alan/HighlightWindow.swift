@@ -52,7 +52,11 @@ class HighlightWindow: NSWindow {
     // The hue comes from the wall clock at draw time, so all the timer has
     // to do is keep the view redrawing while the border is on screen.
     func setPartyMode(_ enabled: Bool) {
-        if enabled {
+        // Party mode's animation is a continuous hue cycle. Under Reduce Motion
+        // keep the color (still sampled from the clock at draw time) but don't
+        // run the redraw timer, so the border wears a party hue without
+        // strobing through the wheel.
+        if enabled && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             guard partyTimer == nil else { return }
             let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
                 self?.contentView?.needsDisplay = true
@@ -72,6 +76,9 @@ class HighlightWindow: NSWindow {
 
     // Briefly thicken the border, then ease back to the configured width.
     func pulse() {
+        // The pulse is decorative motion; skip it entirely under Reduce Motion
+        // (the border is already at its configured width).
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
         guard let view = contentView as? HighlightView else { return }
 
         pulseTimer?.invalidate()
