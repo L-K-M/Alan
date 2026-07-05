@@ -26,6 +26,19 @@ class FocusHighlighter {
     private var axObserver: AXObserver?
     private var observedAppElement: AXUIElement?
     private var observedPid: pid_t = -1
+    private var observerRetryTimer: Timer?
+    private var observerRetryCount = 0
+
+    // Set true when an AX read during resolution timed out (busy/hung app)
+    // rather than genuinely finding no window; refresh() uses it to keep the
+    // current border and retry instead of hiding on a transient stall.
+    private var lastResolutionTimedOut = false
+    private var resolutionRetryTimer: Timer?
+    private var resolutionRetryCount = 0
+
+    // Re-refresh shortly after an AX notification, since a just-created
+    // window's AX tree (main status, final frame) can settle a beat later.
+    private var settleRefreshTimer: Timer?
 
     private var flashTimer: Timer?
     private var flashCount = 0
@@ -377,7 +390,37 @@ class FocusHighlighter {
 
     private static let axCallback: AXObserverCallback = { _, _, _, refcon in
         guard let refcon else { return }
-        Unmanaged<FocusHighlighter>.fromOpaque(refcon).takeUnretainedValue().refresh()
+        Unmanaged<FocusHighlighter>.fromOpaque(refcon).takeUnretainedValue().handleAXNotification()
+    }
+
+    private func handleAXNotification() {
+        refresh()
+        // AXWindowCreated in particular fires before the new window has fully
+        // settled (become main, taken its final frame), so the synchronous
+        // refresh above can sample stale state. A coalesced re-refresh a beat
+        // later catches the settled window.
+        scheduleSettleRefresh()
+    }
+
+    private func scheduleSettleRefresh() {
+        guard settleRefreshTimer == nil else { return }
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
+            self?.settleRefreshTimer = nil
+            self?.refresh()
+        }
+        RunLoop.current.add(timer, forMode: .common)
+        settleRefreshTimer = timer
+    }
+
+    private func scheduleResolutionRetry() {
+        guard resolutionRetryTimer == nil, resolutionRetryCount < 3 else { return }
+        resolutionRetryCount += 1
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+            self?.resolutionRetryTimer = nil
+            self?.refresh()
+        }
+        RunLoop.current.add(timer, forMode: .common)
+        resolutionRetryTimer = timer
     }
 
     private func observeFrontmostApp() {
@@ -404,9 +447,13 @@ class FocusHighlighter {
         // brand-new window that becomes active the instant it appears often
         // posts only AXWindowCreated; without it that window, though active,
         // never triggers a refresh and so never gets a border.
+        // kAXMainWindowChanged covers a window that becomes the app's main
+        // window without becoming key — a frontmost dialog that never takes
+        // keyboard focus posts this but not AXFocusedWindowChanged.
         let notifications = [
             kAXWindowCreatedNotification,
             kAXFocusedWindowChangedNotification,
+            kAXMainWindowChangedNotification,
             kAXWindowMovedNotification,
             kAXWindowResizedNotification,
             kAXWindowMiniaturizedNotification,
@@ -414,15 +461,48 @@ class FocusHighlighter {
             kAXApplicationHiddenNotification,
             kAXApplicationShownNotification
         ]
+        var allRegistered = true
         for notification in notifications {
-            AXObserverAddNotification(observer, appElement, notification as CFString, refcon)
+            let err = AXObserverAddNotification(observer, appElement, notification as CFString, refcon)
+            if err != .success && err != .notificationAlreadyRegistered {
+                allRegistered = false
+            }
         }
 
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
 
         axObserver = observer
         observedAppElement = appElement
-        observedPid = pid
+
+        if allRegistered {
+            // Only latch observedPid once registration fully succeeded, so a
+            // partial failure isn't frozen in by the pid guard above.
+            observedPid = pid
+            observerRetryCount = 0
+        } else {
+            // The app's AX server is likely still coming up (it was activated
+            // the instant it launched) or is momentarily busy. Leave
+            // observedPid unset and retry, so its window events aren't
+            // permanently missed.
+            observedPid = -1
+            scheduleObserverRetry(pid: pid)
+        }
+    }
+
+    private func scheduleObserverRetry(pid: pid_t) {
+        guard observerRetryTimer == nil, observerRetryCount < 5 else { return }
+        observerRetryCount += 1
+        let delay = min(2.0, 0.25 * pow(2.0, Double(observerRetryCount - 1)))
+        let timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.observerRetryTimer = nil
+            // Only worth retrying while this app is still frontmost.
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid {
+                self.observeFrontmostApp()
+            }
+        }
+        RunLoop.current.add(timer, forMode: .common)
+        observerRetryTimer = timer
     }
 
     private func stopObservingApp() {
@@ -519,7 +599,17 @@ class FocusHighlighter {
             }
         }
 
+        lastResolutionTimedOut = false
         guard let (windowElement, axFrame) = currentFocusedWindow() else {
+            if lastResolutionTimedOut {
+                // A transient AX stall (a busy or mid-operation frontmost app),
+                // not a genuine "no focused window". Keep whatever border is up
+                // — the window almost certainly hasn't moved — and retry
+                // shortly, rather than hiding on a hiccup and staying hidden
+                // until the next unrelated event.
+                scheduleResolutionRetry()
+                return
+            }
             if highlightVisible {
                 hideHighlight()
                 lastFrame = nil
@@ -527,6 +617,7 @@ class FocusHighlighter {
             lastFocusedWindow = nil
             return
         }
+        resolutionRetryCount = 0
 
         let cocoaFrame = cocoaRect(fromAXRect: axFrame)
 
@@ -799,7 +890,11 @@ class FocusHighlighter {
 
     private func elementAttribute(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
         var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+        let err = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+        if err == .cannotComplete || err == .apiDisabled {
+            lastResolutionTimedOut = true
+        }
+        guard err == .success,
               let value,
               CFGetTypeID(value) == AXUIElementGetTypeID()
         else { return nil }
@@ -845,14 +940,66 @@ class FocusHighlighter {
     }
 
     // Hello, darkness, my old friend. I'm still really bad at this API.
+    //
+    // Resolve the window the border should hug. The hard case this is built
+    // around: a window that is frontmost but never became key — Finder's
+    // copy-progress dialog is the canonical example. The system-wide focused
+    // (keyboard) element still points into the window behind it, so a
+    // focus-only resolution glues the border to the wrong window. So after the
+    // focus resolution we prefer the frontmost app's main window when the
+    // window server confirms it's actually in front.
     private func currentFocusedWindow() -> (element: AXUIElement, frame: CGRect)? {
+        let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+
+        // Keyboard-focus resolution: right in the common case, and the only
+        // thing that resolves the out-of-process save/open panel service.
+        let focusWindow = focusedWindowElement()
+
+        // If keyboard focus lives in a different process than the frontmost
+        // app (the panel service, a non-activating accessory), trust it —
+        // that's the window the user is actually working in.
+        if let focusWindow, let frontPid {
+            var pid: pid_t = 0
+            if AXUIElementGetPid(focusWindow, &pid) == .success, pid != frontPid,
+               let frame = axFrame(of: focusWindow) {
+                return (focusWindow, frame)
+            }
+        }
+
+        // Otherwise, if the frontmost app's main window is genuinely in front
+        // (a copy dialog that became main but never took keyboard focus),
+        // prefer it. Guarded by the z-order check so floating palettes and the
+        // common case (main == key == frontmost) fall through to keyboard
+        // focus unchanged. Skipped during a live drag — the dragged window is
+        // key, so keyboard focus is already right, saving IPC per 30 Hz tick.
+        if dragTimer == nil, let frontPid,
+           let mainWindow = frontmostMainWindowIfInFront(pid: frontPid),
+           let frame = axFrame(of: mainWindow) {
+            return (mainWindow, frame)
+        }
+
+        // Fall back to the keyboard-focus resolution.
+        if let focusWindow, let frame = axFrame(of: focusWindow) {
+            return (focusWindow, frame)
+        }
+
+        return nil
+    }
+
+    // The window resolved from the system-wide keyboard-focused element, via
+    // the same chain as before: AXWindow, then AXTopLevelUIElement (sheets and
+    // drawers), then the owning process's focused window (the out-of-process
+    // panel service), then the nearest window-like ancestor.
+    private func focusedWindowElement() -> AXUIElement? {
         var focusedElement: CFTypeRef?
         let err = AXUIElementCopyAttributeValue(
             systemWideElement,
             kAXFocusedUIElementAttribute as CFString,
             &focusedElement
         )
-
+        if err == .cannotComplete || err == .apiDisabled {
+            lastResolutionTimedOut = true
+        }
         guard err == .success,
               let focusedElement,
               CFGetTypeID(focusedElement) == AXUIElementGetTypeID()
@@ -861,51 +1008,86 @@ class FocusHighlighter {
         }
         let element = focusedElement as! AXUIElement
 
-        // If focus is a child element, resolve the window containing it.
-        // AXWindow is the direct answer when present. Sheets and drawers
-        // expose AXTopLevelUIElement instead, and the save/open panels live
-        // in an out-of-process panel service — for those, the element's own
-        // process (not the frontmost app, which is the host) knows its
-        // focused window. Failing all that, climb the parent chain. If
-        // nothing window-like turns up anywhere, draw nothing: a border
-        // hugging a text field or overrunning a dialog along some inner
-        // scroll area's frame is worse than no border for a moment.
-        let targetElement: AXUIElement
         if let window = elementAttribute(element, kAXWindowAttribute as String) {
-            targetElement = window
+            return window
         } else if let topLevel = elementAttribute(element, kAXTopLevelUIElementAttribute as String) {
-            targetElement = topLevel
+            return topLevel
         } else if let focusedWindow = focusedWindowOfProcess(owning: element) {
-            targetElement = focusedWindow
+            return focusedWindow
         } else if let ancestor = nearestWindowLikeAncestor(of: element) {
-            // The walk starts at the element itself, so this also covers
-            // apps that report the bare window as the focused element.
-            targetElement = ancestor
-        } else {
-            return nil
+            // The walk starts at the element itself, so this also covers apps
+            // that report the bare window as the focused element.
+            return ancestor
         }
+        return nil
+    }
 
-        var frameValue: CFTypeRef?
-        let frameErr = AXUIElementCopyAttributeValue(
-            targetElement,
-            "AXFrame" as CFString,
-            &frameValue
-        )
-
-        guard frameErr == .success,
-              let cfValue = frameValue,
-              CFGetTypeID(cfValue) == AXValueGetTypeID()
+    // If the frontmost app's main window is genuinely in front — its frame
+    // matches the topmost app window in the window server's z-order — return
+    // it. This catches a copy-progress dialog that became the app's main
+    // window but never took keyboard focus, while leaving floating palettes
+    // (never main) and the common case (main == key == frontmost) to the
+    // keyboard-focus path: for those the main window isn't the topmost thing,
+    // so we return nil and the caller falls back.
+    private func frontmostMainWindowIfInFront(pid: pid_t) -> AXUIElement? {
+        let appElement = AXUIElementCreateApplication(pid)
+        guard let mainWindow = elementAttribute(appElement, kAXMainWindowAttribute as String),
+              let mainFrame = axFrame(of: mainWindow),
+              let topBounds = topmostWindowBounds(pid: pid)
         else {
             return nil
         }
+        return framesRoughlyEqual(mainFrame, topBounds) ? mainWindow : nil
+    }
 
-        var rect = CGRect.zero
-        if AXValueGetType(cfValue as! AXValue) == .cgRect {
-            AXValueGetValue(cfValue as! AXValue, .cgRect, &rect)
-            return (targetElement, rect)
+    // Bounds of the frontmost app-owned window in the window server's
+    // front-to-back order. AXFrame and CGWindow bounds share the top-left
+    // global coordinate space, so the result is comparable to an AXFrame.
+    private func topmostWindowBounds(pid: pid_t) -> CGRect? {
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let infoList = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return nil
         }
-
+        // First reasonably-sized window owned by this app on a normal window
+        // layer. Menus, pop-ups, and status windows sit on higher layers and
+        // are skipped; floating tool panels (layer 3) are kept.
+        for info in infoList {
+            guard let ownerNumber = info[kCGWindowOwnerPID as String] as? NSNumber,
+                  ownerNumber.int32Value == pid else { continue }
+            let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0
+            guard layer >= 0, layer <= 3 else { continue }
+            guard let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary) else { continue }
+            guard bounds.width > 40, bounds.height > 40 else { continue }
+            return bounds
+        }
         return nil
+    }
+
+    private func axFrame(of element: AXUIElement) -> CGRect? {
+        var frameValue: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(element, "AXFrame" as CFString, &frameValue)
+        if err == .cannotComplete || err == .apiDisabled {
+            lastResolutionTimedOut = true
+        }
+        guard err == .success,
+              let cfValue = frameValue,
+              CFGetTypeID(cfValue) == AXValueGetTypeID(),
+              AXValueGetType(cfValue as! AXValue) == .cgRect
+        else {
+            return nil
+        }
+        var rect = CGRect.zero
+        AXValueGetValue(cfValue as! AXValue, .cgRect, &rect)
+        return rect
+    }
+
+    private func framesRoughlyEqual(_ a: CGRect, _ b: CGRect) -> Bool {
+        let tolerance: CGFloat = 4
+        return abs(a.minX - b.minX) < tolerance
+            && abs(a.minY - b.minY) < tolerance
+            && abs(a.width - b.width) < tolerance
+            && abs(a.height - b.height) < tolerance
     }
 }
 
