@@ -15,6 +15,7 @@ class PrefsWindowController: NSWindowController {
     // MARK: - Appearance tab controls
 
     private let previewView = BorderPreviewView()
+    private let borderStylePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     private let lightModeColorWell = NSColorWell()
     private let darkModeColorWell = NSColorWell()
     private let perAppColorsCheckbox = NSButton(checkboxWithTitle: "Per-app border colors", target: nil, action: nil)
@@ -132,11 +133,17 @@ class PrefsWindowController: NSWindowController {
         setUp(strongerShadowCheckbox, action: #selector(strongerShadowChanged(_:)))
         setUp(partyModeCheckbox, action: #selector(partyModeChanged(_:)))
 
+        borderStylePopUp.translatesAutoresizingMaskIntoConstraints = false
+        borderStylePopUp.addItems(withTitles: BorderStyle.allCases.map(\.label))
+        borderStylePopUp.target = self
+        borderStylePopUp.action = #selector(borderStyleChanged(_:))
+
         let empty = NSGridCell.emptyContentView
         let grid = NSGridView(views: [
             [makeLabel("Border Width:"), widthField, widthStepper],
             [makeLabel("Border Inset:"), insetField, insetStepper],
             [makeLabel("Corner Radius:"), radiusField, radiusStepper],
+            [makeLabel("Border Style:"), borderStylePopUp, empty],
             [makeLabel("Light Mode:"), lightModeColorWell, empty],
             [makeLabel("Dark Mode:"), darkModeColorWell, empty],
             [empty, perAppColorsCheckbox, empty],
@@ -381,6 +388,9 @@ class PrefsWindowController: NSWindowController {
         findMyWindowCheckbox.state = defaults.bool(forKey: Key.findMyWindowHotkey) ? .on : .off
         shakeToFindCheckbox.state = defaults.bool(forKey: Key.shakeToFind) ? .on : .off
         perAppColorsCheckbox.state = defaults.bool(forKey: Key.perAppColors) ? .on : .off
+        if let styleIndex = BorderStyle.allCases.firstIndex(of: BorderStyle.current) {
+            borderStylePopUp.selectItem(at: styleIndex)
+        }
         glowingBorderCheckbox.state = defaults.bool(forKey: Key.glowingBorder) ? .on : .off
         strongerShadowCheckbox.state = defaults.bool(forKey: Key.strongerShadow) ? .on : .off
         partyModeCheckbox.state = defaults.bool(forKey: Key.partyMode) ? .on : .off
@@ -463,6 +473,11 @@ class PrefsWindowController: NSWindowController {
 
     @objc func partyModeChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.partyMode)
+    }
+
+    @objc func borderStyleChanged(_ sender: NSPopUpButton) {
+        let index = max(0, min(BorderStyle.allCases.count - 1, sender.indexOfSelectedItem))
+        UserDefaults.standard.set(BorderStyle.allCases[index].rawValue, forKey: Key.borderStyle)
     }
 
     @objc func shakeToFindChanged(_ sender: NSButton) {

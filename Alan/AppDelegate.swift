@@ -37,7 +37,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Key.animateMovement: true,
             Key.moveAnimationDuration: Defaults.moveAnimationDuration,
             Key.partyMode: false,
-            Key.hideDock: false
+            Key.hideDock: false,
+            Key.borderStyle: BorderStyle.solid.rawValue
         ])
 
         if UserDefaults.standard.bool(forKey: Key.hideDock) == true {

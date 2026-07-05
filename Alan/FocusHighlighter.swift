@@ -470,20 +470,33 @@ class FocusHighlighter {
     private func showHighlight(at frame: CGRect) {
         if UserDefaults.standard.bool(forKey: Key.spotlightMode) {
             highlightWindow.setPartyMode(false)
+            highlightWindow.setBorderStyleAnimating(false)
             highlightWindow.orderOut(nil)
             moveSpotlight(to: frame)
         } else {
             hideDimWindows()
             moveBorder(to: frame)
-            // The party redraw timer only needs to run while the border is
-            // actually on screen.
+            // The party and animated-style redraw timers only need to run
+            // while the border is actually on screen.
             highlightWindow.setPartyMode(UserDefaults.standard.bool(forKey: Key.partyMode))
+            highlightWindow.setBorderStyleAnimating(borderStyleNeedsAnimation())
         }
         highlightVisible = true
     }
 
+    // Marching ants and the hand-drawn wobble animate (unless Reduce Motion is
+    // on, where they render statically and need no redraw timer).
+    private func borderStyleNeedsAnimation() -> Bool {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return false }
+        switch BorderStyle.current {
+        case .ants, .handDrawn: return true
+        case .solid, .dashed: return false
+        }
+    }
+
     private func hideHighlight() {
         highlightWindow.setPartyMode(false)
+        highlightWindow.setBorderStyleAnimating(false)
         highlightWindow.orderOut(nil)
         hideDimWindows()
         highlightVisible = false
