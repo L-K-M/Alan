@@ -15,6 +15,11 @@ class PrefsWindowController: NSWindowController {
     // MARK: - Appearance tab controls
 
     private let previewView = BorderPreviewView()
+    // Overlaid on the preview while spotlight mode is on, when the preview
+    // renders the dimming instead of a border.
+    private let spotlightPreviewHint = NSTextField(
+        wrappingLabelWithString: "Spotlight mode is on — the border only appears for “Find my window” flashes."
+    )
     private let borderStylePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     private let lightModeColorWell = NSColorWell()
     private let darkModeColorWell = NSColorWell()
@@ -152,6 +157,17 @@ class PrefsWindowController: NSWindowController {
         previewView.layer?.cornerRadius = 6
         previewView.layer?.masksToBounds = true
         view.addSubview(previewView)
+
+        spotlightPreviewHint.translatesAutoresizingMaskIntoConstraints = false
+        spotlightPreviewHint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        spotlightPreviewHint.textColor = .white
+        spotlightPreviewHint.isHidden = true
+        previewView.addSubview(spotlightPreviewHint)
+        NSLayoutConstraint.activate([
+            spotlightPreviewHint.leadingAnchor.constraint(equalTo: previewView.leadingAnchor, constant: 10),
+            spotlightPreviewHint.trailingAnchor.constraint(lessThanOrEqualTo: previewView.trailingAnchor, constant: -10),
+            spotlightPreviewHint.bottomAnchor.constraint(equalTo: previewView.bottomAnchor, constant: -8)
+        ])
 
         let widthField = makeNumberField(boundTo: Key.width, min: 1, max: 20)
         let widthStepper = makeStepper(boundTo: Key.width, min: 1, max: 20)
@@ -485,6 +501,9 @@ class PrefsWindowController: NSWindowController {
             ? "Spotlight mode replaces the border, so there is no border to pulse."
             : nil
 
+        // While spotlight is on, the preview shows the dimming and says why.
+        spotlightPreviewHint.isHidden = !spotlightOn
+
         shortcutRecorder.isEnabled = defaults.bool(forKey: Key.findMyWindowHotkey)
         shortcutRecorder.registrationFailed = FocusHighlighter.shared.hotkeyRegistrationFailed
         shortcutRecorder.refreshTitle()
@@ -761,6 +780,25 @@ final class BorderPreviewView: NSView {
             )
             dotColor.setFill()
             NSBezierPath(ovalIn: dot).fill()
+        }
+
+        if UserDefaults.standard.bool(forKey: Key.spotlightMode) {
+            // Spotlight mode replaces the border with dimming, so previewing
+            // a border that won't be there was a lie. Same math as DimView:
+            // dim everything but the window, cut out with the window's own
+            // rounded corners — and the dim-level slider previews live.
+            var dimLevel = UserDefaults.standard.double(forKey: Key.spotlightDimLevel)
+            if dimLevel == 0 {
+                dimLevel = Defaults.spotlightDimAlpha
+            }
+            dimLevel = max(0.05, min(0.9, dimLevel))
+
+            let dimPath = NSBezierPath(rect: bounds)
+            dimPath.append(NSBezierPath(roundedRect: windowRect, xRadius: 9, yRadius: 9))
+            dimPath.windingRule = .evenOdd
+            NSColor.black.withAlphaComponent(CGFloat(dimLevel)).setFill()
+            dimPath.fill()
+            return
         }
 
         // The real border, drawn by the real code
