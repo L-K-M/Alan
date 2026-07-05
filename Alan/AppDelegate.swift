@@ -47,9 +47,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             setupStatusItem()
         }
 
-        requestAccessibilityPermissionIfNeeded()
+        let permissionJustGranted = requestAccessibilityPermissionIfNeeded()
 
         FocusHighlighter.shared.start()
+
+        // The border appearing is the whole "you're all set" moment a
+        // background utility like this needs. If we just blocked on the
+        // permission grant, announce it by flashing the focused window's
+        // border — otherwise the user is left staring at System Settings
+        // wondering whether anything happened.
+        if permissionJustGranted {
+            FocusHighlighter.shared.flashBorder()
+        }
     }
 
     private func setupStatusItem() {
@@ -68,50 +77,69 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
     }
 
-    func requestAccessibilityPermissionIfNeeded() {
-        let options: CFDictionary = [
-            kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true
-        ] as CFDictionary
+    // Returns true if we had to block on the user granting permission and it
+    // was then granted (so the caller can announce the app is live).
+    @discardableResult
+    func requestAccessibilityPermissionIfNeeded() -> Bool {
+        // prompt:false — we present our own guided alert below and open System
+        // Settings ourselves, so the system's built-in prompt would just be a
+        // second dialog stacked on top. Querying trust still lists Alan under
+        // Accessibility, giving the user a checkbox to flip.
+        guard !AXIsProcessTrusted() else { return false }
 
-        let trusted = AXIsProcessTrustedWithOptions(options)
+        openAccessibilitySettings()
 
-        guard trusted else {
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                NSWorkspace.shared.open(url)
+        let alert = NSAlert()
+        alert.messageText = "Accessibility Permission Required"
+        alert.informativeText = """
+        Alan needs Accessibility permission to highlight the focused window.
+
+        Enable “Alan” in System Settings → Privacy & Security → Accessibility \
+        and Alan will start by itself — no relaunch needed.
+        """
+        // First button is the default (bound to Return). It must NOT be a
+        // destructive action: a new user's reflexive Return should open
+        // Settings, not quit the app on its first launch.
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Quit Alan")
+
+        // Poll while the alert runs (.common covers the modal panel run loop
+        // mode) and dismiss it the moment permission is granted. This must be
+        // abortModal, not stopModal: Apple's docs are explicit that stopModal
+        // from a timer callout only sets a flag the modal loop checks after
+        // its next event — and a background app sitting behind System Settings
+        // receives none, so the alert would never close on its own.
+        let pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            if AXIsProcessTrusted() {
+                NSApp.abortModal()
             }
+        }
+        RunLoop.current.add(pollTimer, forMode: .common)
+        defer { pollTimer.invalidate() }
 
-            let alert = NSAlert()
-            alert.messageText = "Accessibility Permission Required"
-            alert.informativeText = """
-            Alan needs Accessibility permission to highlight the focused window.
-
-            Enable “Alan” in System Settings → Privacy & Security → Accessibility
-            and Alan will start by itself — no relaunch needed.
-            """
-            alert.addButton(withTitle: "Quit")
-
-            // Poll while the alert runs (.common covers the modal panel run
-            // loop mode) and dismiss it the moment permission is granted, so
-            // the app springs to life without a relaunch.
-            let pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-                if AXIsProcessTrusted() {
-                    NSApp.stopModal()
-                }
-            }
-            RunLoop.current.add(pollTimer, forMode: .common)
-
+        // Keep the alert up until permission is granted (poll fires
+        // abortModal) or the user quits. Clicking "Open System Settings" just
+        // re-opens the pane and re-presents — it is not a dismissal.
+        while !AXIsProcessTrusted() {
             let response = alert.runModal()
-            pollTimer.invalidate()
-
-            if response == .alertFirstButtonReturn {
-                // The user chose Quit instead of granting permission.
-                NSApp.terminate(nil)
+            if response == .abort {
+                break
             }
+            if response == .alertSecondButtonReturn {
+                NSApp.terminate(nil)
+                return false
+            }
+            openAccessibilitySettings()
+        }
 
-            // Dismissed via stopModal: permission was just granted. The
-            // panel doesn't close itself in that case.
-            alert.window.orderOut(nil)
-            return
+        // The panel doesn't close itself when dismissed via abortModal.
+        alert.window.orderOut(nil)
+        return true
+    }
+
+    private func openAccessibilitySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
         }
     }
 
