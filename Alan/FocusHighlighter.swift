@@ -28,6 +28,9 @@ class FocusHighlighter {
     private var observedPid: pid_t = -1
     private var observerRetryTimer: Timer?
     private var observerRetryCount = 0
+    // The pid the retry budget belongs to: retries are per-app, so one
+    // stubborn app exhausting its budget must not starve the next one.
+    private var observerRetryPid: pid_t = -1
 
     // Set true when an AX read during resolution timed out (busy/hung app)
     // rather than genuinely finding no window; refresh() uses it to keep the
@@ -490,6 +493,15 @@ class FocusHighlighter {
     }
 
     private func scheduleObserverRetry(pid: pid_t) {
+        // A fresh app gets a fresh budget — and any timer still pending for
+        // a previous app is moot (its callback no-ops once that app is no
+        // longer frontmost, but while pending it would block this one).
+        if pid != observerRetryPid {
+            observerRetryPid = pid
+            observerRetryCount = 0
+            observerRetryTimer?.invalidate()
+            observerRetryTimer = nil
+        }
         guard observerRetryTimer == nil, observerRetryCount < 5 else { return }
         observerRetryCount += 1
         let delay = min(2.0, 0.25 * pow(2.0, Double(observerRetryCount - 1)))
@@ -512,6 +524,11 @@ class FocusHighlighter {
         axObserver = nil
         observedAppElement = nil
         observedPid = -1
+        // A retry still pending for the app we just stopped observing would
+        // only fire into the void — and, worse, block the next app's retry
+        // from being scheduled.
+        observerRetryTimer?.invalidate()
+        observerRetryTimer = nil
     }
 
     // MARK: - Live drag tracking
@@ -955,12 +972,14 @@ class FocusHighlighter {
     // Hello, darkness, my old friend. I'm still really bad at this API.
     //
     // Resolve the window the border should hug. The hard case this is built
-    // around: a window that is frontmost but never became key — Finder's
-    // copy-progress dialog is the canonical example. The system-wide focused
-    // (keyboard) element still points into the window behind it, so a
-    // focus-only resolution glues the border to the wrong window. So after the
-    // focus resolution we prefer the frontmost app's main window when the
-    // window server confirms it's actually in front.
+    // around: a window that is frontmost but never became key *or main* —
+    // Finder's copy-progress panel is the canonical example. The system-wide
+    // focused (keyboard) element still points into the window behind it, and
+    // AXMainWindow can point there too (panels are never main; orderFront
+    // alone promotes nothing), so any focus-derived resolution glues the
+    // border to the wrong window. The window server's z-order knows better:
+    // when neither the keyboard-focus window nor the main window matches the
+    // topmost app-owned window, resolve that window directly by frame.
     private func currentFocusedWindow() -> (element: AXUIElement, frame: CGRect)? {
         let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
 
@@ -979,19 +998,40 @@ class FocusHighlighter {
             }
         }
 
-        // Otherwise, if the frontmost app's main window is genuinely in front
-        // (a copy dialog that became main but never took keyboard focus),
-        // prefer it. Guarded by the z-order check so floating palettes and the
-        // common case (main == key == frontmost) fall through to keyboard
-        // focus unchanged. Skipped during a live drag — the dragged window is
-        // key, so keyboard focus is already right, saving IPC per 30 Hz tick.
+        // Cross-check against the window server's z-order. Skipped during a
+        // live drag — the dragged window is key, so keyboard focus is already
+        // right, saving IPC per 30 Hz tick.
         if dragTimer == nil, let frontPid,
-           let mainWindow = frontmostMainWindowIfInFront(pid: frontPid),
-           let frame = axFrame(of: mainWindow) {
-            return (mainWindow, frame)
+           let topBounds = topmostWindowBounds(pid: frontPid) {
+            // Cheapest first: the keyboard-focus window already is the
+            // topmost window — the overwhelmingly common case.
+            if let focusWindow, let frame = axFrame(of: focusWindow),
+               framesRoughlyEqual(frame, topBounds) {
+                return (focusWindow, frame)
+            }
+
+            // A dialog that became the app's main window without taking
+            // keyboard focus.
+            let appElement = AXUIElementCreateApplication(frontPid)
+            if let mainWindow = elementAttribute(appElement, kAXMainWindowAttribute as String),
+               let frame = axFrame(of: mainWindow),
+               framesRoughlyEqual(frame, topBounds) {
+                return (mainWindow, frame)
+            }
+
+            // Neither key nor main matches what's actually in front — the
+            // copy-progress panel case. AX can't *name* the window, but its
+            // geometry gives it away: find the app's AX window sitting at
+            // the topmost bounds.
+            if let topWindow = appWindowMatching(topBounds, appElement: appElement),
+               let frame = axFrame(of: topWindow) {
+                return (topWindow, frame)
+            }
         }
 
-        // Fall back to the keyboard-focus resolution.
+        // Fall back to the keyboard-focus resolution: floating palettes
+        // (never the topmost layer-0 window), windows the z-order snapshot
+        // missed, and the drag path all land here.
         if let focusWindow, let frame = axFrame(of: focusWindow) {
             return (focusWindow, frame)
         }
@@ -1035,22 +1075,23 @@ class FocusHighlighter {
         return nil
     }
 
-    // If the frontmost app's main window is genuinely in front — its frame
-    // matches the topmost app window in the window server's z-order — return
-    // it. This catches a copy-progress dialog that became the app's main
-    // window but never took keyboard focus, while leaving floating palettes
-    // (never main) and the common case (main == key == frontmost) to the
-    // keyboard-focus path: for those the main window isn't the topmost thing,
-    // so we return nil and the caller falls back.
-    private func frontmostMainWindowIfInFront(pid: pid_t) -> AXUIElement? {
-        let appElement = AXUIElementCreateApplication(pid)
-        guard let mainWindow = elementAttribute(appElement, kAXMainWindowAttribute as String),
-              let mainFrame = axFrame(of: mainWindow),
-              let topBounds = topmostWindowBounds(pid: pid)
-        else {
-            return nil
+    // Find the app's AX window whose frame matches the given window-server
+    // bounds — the resolution of last resort for a window that is neither
+    // key nor main. Capped: the array read is one IPC but every AXFrame read
+    // is another, and a window-hoarder app shouldn't stall a refresh.
+    private func appWindowMatching(_ bounds: CGRect, appElement: AXUIElement) -> AXUIElement? {
+        var value: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value)
+        if err == .cannotComplete || err == .apiDisabled {
+            lastResolutionTimedOut = true
         }
-        return framesRoughlyEqual(mainFrame, topBounds) ? mainWindow : nil
+        guard err == .success, let windows = value as? [AXUIElement] else { return nil }
+        for window in windows.prefix(20) {
+            if let frame = axFrame(of: window), framesRoughlyEqual(frame, bounds) {
+                return window
+            }
+        }
+        return nil
     }
 
     // Bounds of the frontmost app-owned window in the window server's
