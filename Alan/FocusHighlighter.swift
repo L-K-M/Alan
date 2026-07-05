@@ -110,7 +110,7 @@ class FocusHighlighter {
         // moment it's toggled, so the glide/pulse/party guards below take
         // effect without waiting for the next window event.
         accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didChangeAccessibilityDisplayOptionsNotification,
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
