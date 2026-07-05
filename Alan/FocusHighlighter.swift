@@ -33,6 +33,18 @@ class FocusHighlighter {
     private var hotKeyEventHandler: EventHandlerRef?
     private var registeredKeyCode: UInt32 = 0
     private var registeredModifiers: UInt32 = 0
+    // While the shortcut recorder is capturing, the Carbon hotkey must be
+    // suspended — a registered hotkey is consumed system-wide before it can
+    // reach the recorder's local key monitor, so the current combo could
+    // never otherwise be re-recorded (it would just fire the hotkey).
+    private var hotkeyRecordingSuspended = false
+    // True when the last RegisterEventHotKey attempt failed — the combo is
+    // taken by another app. Observed by Preferences to flag the dead shortcut.
+    private(set) var hotkeyRegistrationFailed = false
+
+    // Posted when the hotkey registration outcome changes, so Preferences can
+    // reflect a failed (in-use) shortcut without polling.
+    static let hotkeyRegistrationDidChange = Notification.Name("AlanHotkeyRegistrationDidChange")
 
     private var shakeMonitor: Any?
     private var shakeLastX: CGFloat?
@@ -121,13 +133,24 @@ class FocusHighlighter {
     // MARK: - Find my window
 
     private func updateHotkeyRegistration() {
+        // Keep the hotkey unregistered while a recording is in progress, so the
+        // combo being typed reaches the recorder rather than firing the hotkey.
+        guard !hotkeyRecordingSuspended else {
+            unregisterFindMyWindowHotkey()
+            return
+        }
         guard UserDefaults.standard.bool(forKey: Key.findMyWindowHotkey) else {
             unregisterFindMyWindowHotkey()
             return
         }
 
-        let keyCode = UInt32(UserDefaults.standard.integer(forKey: Key.findMyWindowKeyCode))
-        let modifiers = UInt32(UserDefaults.standard.integer(forKey: Key.findMyWindowModifiers))
+        // integer(forKey:) returns an Int that a corrupt or hand-edited plist
+        // could make negative or oversized; UInt32(_:) would trap on those, so
+        // fall back to the defaults instead of crashing at launch.
+        let keyCode = UInt32(exactly: UserDefaults.standard.integer(forKey: Key.findMyWindowKeyCode))
+            ?? UInt32(Defaults.findMyWindowDefaultKeyCode)
+        let modifiers = UInt32(exactly: UserDefaults.standard.integer(forKey: Key.findMyWindowModifiers))
+            ?? UInt32(Defaults.findMyWindowDefaultModifiers)
 
         // Re-register when the recorded shortcut changed.
         if hotKeyRef != nil, keyCode == registeredKeyCode, modifiers == registeredModifiers {
@@ -135,6 +158,17 @@ class FocusHighlighter {
         }
         unregisterFindMyWindowHotkey()
         registerFindMyWindowHotkey(keyCode: keyCode, modifiers: modifiers)
+    }
+
+    // Suspend/resume the hotkey around a Preferences shortcut recording.
+    func suspendHotkeyForRecording() {
+        hotkeyRecordingSuspended = true
+        unregisterFindMyWindowHotkey()
+    }
+
+    func resumeHotkeyAfterRecording() {
+        hotkeyRecordingSuspended = false
+        updateHotkeyRegistration()
     }
 
     // A Carbon hotkey consumes the keystroke (unlike a passive event
@@ -175,11 +209,21 @@ class FocusHighlighter {
         if status != noErr {
             // The out parameter is not defined on failure; make sure the
             // next attempt isn't fooled into thinking we're registered.
+            // Failure here is almost always eventHotKeyExistsErr — the combo
+            // is already claimed by another app — so record it for the UI.
             hotKeyRef = nil
+            setHotkeyRegistrationFailed(true)
         } else {
             registeredKeyCode = keyCode
             registeredModifiers = modifiers
+            setHotkeyRegistrationFailed(false)
         }
+    }
+
+    private func setHotkeyRegistrationFailed(_ failed: Bool) {
+        guard failed != hotkeyRegistrationFailed else { return }
+        hotkeyRegistrationFailed = failed
+        NotificationCenter.default.post(name: Self.hotkeyRegistrationDidChange, object: self)
     }
 
     private func unregisterFindMyWindowHotkey() {
@@ -187,6 +231,8 @@ class FocusHighlighter {
             UnregisterEventHotKey(hotKeyRef)
             self.hotKeyRef = nil
         }
+        // Nothing is registered now, so there's no failure to report.
+        setHotkeyRegistrationFailed(false)
     }
 
     // MARK: - Shake to find
