@@ -45,7 +45,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Key.moveAnimationDuration: Defaults.moveAnimationDuration,
             Key.partyMode: false,
             Key.hideDock: false,
-            Key.paused: false
+            Key.paused: false,
+            Key.borderStyle: BorderStyle.solid.rawValue
         ])
 
         applyActivationPolicy()

@@ -77,6 +77,28 @@ class HighlightWindow: NSWindow {
         }
     }
 
+    // MARK: - Animated border styles
+
+    private var styleAnimationTimer: Timer?
+
+    // Marching ants and the hand-drawn wobble derive their phase/seed from the
+    // wall clock at draw time (like party mode), so the timer just keeps the
+    // view repainting while such a style is on screen.
+    func setBorderStyleAnimating(_ enabled: Bool) {
+        if enabled {
+            guard styleAnimationTimer == nil else { return }
+            let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+                self?.contentView?.needsDisplay = true
+            }
+            timer.tolerance = (1.0 / 30.0) * 0.1
+            RunLoop.current.add(timer, forMode: .common)
+            styleAnimationTimer = timer
+        } else {
+            styleAnimationTimer?.invalidate()
+            styleAnimationTimer = nil
+        }
+    }
+
     // MARK: - Focus pulse
 
     private var pulseTimer: Timer?
@@ -173,9 +195,17 @@ class HighlightView: NSView {
         var cornerRadius = UserDefaults.standard.integer(forKey: Key.cornerRadius)
         cornerRadius = max(0, min(50, cornerRadius))
 
+        let style = BorderStyle.current
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+
         let borderBounds = windowRect.insetBy(dx: CGFloat(inset), dy: CGFloat(inset))
         let path: NSBezierPath
-        if cornerRadius > 0 {
+        if style == .handDrawn {
+            // Re-seed a few times a second for the wobble; a fixed seed under
+            // Reduce Motion renders a static hand-drawn look.
+            let seed = reduceMotion ? 0 : Int(Date().timeIntervalSinceReferenceDate * 3)
+            path = wobblePath(around: borderBounds, seed: seed)
+        } else if cornerRadius > 0 {
             path = NSBezierPath(roundedRect: borderBounds, xRadius: CGFloat(cornerRadius), yRadius: CGFloat(cornerRadius))
         } else {
             path = NSBezierPath(rect: borderBounds)
@@ -184,6 +214,18 @@ class HighlightView: NSView {
         // 25 pt past the path, which still fits inside margin + inset.
         let effectiveWidth = CGFloat(width) * pulseScale
         path.lineWidth = effectiveWidth
+
+        // Dashed and marching-ants share a dash pattern; ants additionally
+        // advance the phase over time (frozen under Reduce Motion).
+        if style == .dashed || style == .ants {
+            let dash = [effectiveWidth * 2.2, effectiveWidth * 1.8]
+            var phase: CGFloat = 0
+            if style == .ants, !reduceMotion {
+                let period = dash[0] + dash[1]
+                phase = CGFloat(Date().timeIntervalSinceReferenceDate * 24).truncatingRemainder(dividingBy: period)
+            }
+            path.setLineDash(dash, count: dash.count, phase: phase)
+        }
 
         let color = currentBorderColor()
 
@@ -236,6 +278,52 @@ class HighlightView: NSView {
         // The main border stroke
         color.setStroke()
         path.stroke()
+    }
+
+    // MARK: - Hand-drawn wobble
+
+    // A closed path tracing the rect with each sampled point nudged by
+    // deterministic per-point noise — an xkcd-style hand-drawn wobble.
+    // Deterministic in `seed`, so a fixed seed renders a static sketch and a
+    // clock-derived seed animates. Corner radius is intentionally ignored:
+    // a wobbly outline reads as hand-drawn regardless.
+    static func wobblePath(around rect: CGRect, seed: Int) -> NSBezierPath {
+        let amplitude: CGFloat = 1.6
+        let perimeter = 2 * (rect.width + rect.height)
+        let count = max(12, Int((perimeter / 16).rounded()))
+        let path = NSBezierPath()
+        for i in 0..<count {
+            let t = CGFloat(i) / CGFloat(count)
+            var p = pointOnPerimeter(of: rect, at: t)
+            p.x += wobbleNoise(i, seed) * amplitude
+            p.y += wobbleNoise(i &+ 977, seed) * amplitude
+            if i == 0 { path.move(to: p) } else { path.line(to: p) }
+        }
+        path.close()
+        return path
+    }
+
+    // Walk the rectangle perimeter clockwise from the top-left; t in [0, 1).
+    private static func pointOnPerimeter(of rect: CGRect, at t: CGFloat) -> NSPoint {
+        let w = rect.width, h = rect.height
+        var d = t * (2 * (w + h))
+        if d <= w { return NSPoint(x: rect.minX + d, y: rect.minY) }
+        d -= w
+        if d <= h { return NSPoint(x: rect.maxX, y: rect.minY + d) }
+        d -= h
+        if d <= w { return NSPoint(x: rect.maxX - d, y: rect.maxY) }
+        d -= w
+        return NSPoint(x: rect.minX, y: rect.maxY - d)
+    }
+
+    // Deterministic noise in [-1, 1] from an integer key — a cheap integer
+    // hash, so no dependence on the process-random Hasher.
+    private static func wobbleNoise(_ i: Int, _ seed: Int) -> CGFloat {
+        var h = UInt64(bitPattern: Int64(i)) &* 0x9E37_79B9_7F4A_7C15
+        h ^= UInt64(bitPattern: Int64(seed)) &* 0xC2B2_AE3D_27D4_EB4F
+        h = (h ^ (h >> 29)) &* 0xBF58_476D_1CE4_E5B9
+        h ^= h >> 32
+        return CGFloat(h % 2000) / 1000.0 - 1.0
     }
 }
 

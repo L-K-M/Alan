@@ -57,4 +57,27 @@ struct Key {
     static let findMyWindowShortcutLabel = "findMyWindowShortcutLabel"
     static let shakeToFind = "shakeToFind"
     static let paused = "paused"
+    static let borderStyle = "borderStyle"
+}
+
+// The border's line style. Raw values are the stored defaults strings.
+enum BorderStyle: String, CaseIterable {
+    case solid
+    case dashed
+    case ants        // marching ants — dashes whose phase cycles
+    case handDrawn   // an xkcd-style wobble
+
+    // Menu-facing labels, in the order shown in the popup.
+    var label: String {
+        switch self {
+        case .solid: return "Solid"
+        case .dashed: return "Dashed"
+        case .ants: return "Marching ants"
+        case .handDrawn: return "Hand-drawn"
+        }
+    }
+
+    static var current: BorderStyle {
+        BorderStyle(rawValue: UserDefaults.standard.string(forKey: Key.borderStyle) ?? "") ?? .solid
+    }
 }
