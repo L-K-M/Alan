@@ -45,6 +45,7 @@ class PrefsWindowController: NSWindowController {
     private let shakeToFindCheckbox = NSButton(checkboxWithTitle: "Shake mouse to find window", target: nil, action: nil)
     private let flashOnSpaceChangeCheckbox = NSButton(checkboxWithTitle: "Flash border when switching Spaces", target: nil, action: nil)
     private let showInScreenshotsCheckbox = NSButton(checkboxWithTitle: "Show overlays in screenshots and recordings", target: nil, action: nil)
+    private let focusTrailCheckbox = NSButton(checkboxWithTitle: "Focus trail — fade a ghost border on the window you left", target: nil, action: nil)
     private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: "Launch Alan at login", target: nil, action: nil)
 
     // MARK: - Excluded-apps tab controls
@@ -248,6 +249,7 @@ class PrefsWindowController: NSWindowController {
         setUp(shakeToFindCheckbox, action: #selector(shakeToFindChanged(_:)))
         setUp(flashOnSpaceChangeCheckbox, action: #selector(flashOnSpaceChangeChanged(_:)))
         setUp(showInScreenshotsCheckbox, action: #selector(showInScreenshotsChanged(_:)))
+        setUp(focusTrailCheckbox, action: #selector(focusTrailChanged(_:)))
         setUp(launchAtLoginCheckbox, action: #selector(launchAtLoginChanged(_:)))
 
         glideDurationSlider.translatesAutoresizingMaskIntoConstraints = false
@@ -300,6 +302,7 @@ class PrefsWindowController: NSWindowController {
             shakeToFindCheckbox,
             flashOnSpaceChangeCheckbox,
             showInScreenshotsCheckbox,
+            focusTrailCheckbox,
             divider,
             launchAtLoginCheckbox
         ])
@@ -480,6 +483,7 @@ class PrefsWindowController: NSWindowController {
         shakeToFindCheckbox.state = defaults.bool(forKey: Key.shakeToFind) ? .on : .off
         flashOnSpaceChangeCheckbox.state = defaults.bool(forKey: Key.flashOnSpaceChange) ? .on : .off
         showInScreenshotsCheckbox.state = defaults.bool(forKey: Key.showInScreenshots) ? .on : .off
+        focusTrailCheckbox.state = defaults.bool(forKey: Key.focusTrail) ? .on : .off
         perAppColorsCheckbox.state = defaults.bool(forKey: Key.perAppColors) ? .on : .off
         useAccentColorCheckbox.state = defaults.bool(forKey: Key.useAccentColor) ? .on : .off
         // The light/dark wells become silent no-ops while the accent color is
@@ -611,6 +615,10 @@ class PrefsWindowController: NSWindowController {
 
     @objc func showInScreenshotsChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.showInScreenshots)
+    }
+
+    @objc func focusTrailChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.focusTrail)
     }
 
     @objc func launchAtLoginChanged(_ sender: NSButton) {

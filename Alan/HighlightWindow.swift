@@ -573,3 +573,61 @@ extension NSWindow {
         sharingType = UserDefaults.standard.bool(forKey: Key.showInScreenshots) ? .readOnly : .none
     }
 }
+
+// A one-shot fading copy of the border, left on the window focus just moved
+// away *from* — you see where your attention came from, not only where it went.
+// Same click-through, out-of-capture setup as HighlightWindow.
+class GhostBorderWindow: NSWindow {
+    // Bumped on each flash so a stale completion handler (from an earlier,
+    // superseded fade) doesn't order the window out mid-animation.
+    private var generation = 0
+    private var holdTimer: Timer?
+
+    init() {
+        super.init(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
+        self.isOpaque = false
+        self.hasShadow = false
+        self.backgroundColor = .clear
+        self.ignoresMouseEvents = true
+        self.level = .statusBar
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        self.isReleasedWhenClosed = false
+        self.sharingType = .none
+        self.contentView = HighlightView(frame: .zero)
+    }
+
+    // Reveal a static border at `frame` (window frame in global Cocoa
+    // coordinates) and fade it out over the trail duration, ordering out when
+    // done. Re-entrant: a new call repositions and restarts.
+    func flash(at frame: CGRect, reduceMotion: Bool) {
+        generation += 1
+        let gen = generation
+        holdTimer?.invalidate()
+        holdTimer = nil
+
+        let margin = HighlightWindow.shadowMargin
+        setFrame(frame.insetBy(dx: -margin, dy: -margin), display: false)
+        contentView?.needsDisplay = true
+        alphaValue = 1
+        orderFrontRegardless()
+
+        if reduceMotion {
+            // No fade under Reduce Motion — a brief static reveal, then gone.
+            let timer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
+                guard let self, self.generation == gen else { return }
+                self.orderOut(nil)
+            }
+            RunLoop.current.add(timer, forMode: .common)
+            holdTimer = timer
+            return
+        }
+
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = Defaults.ghostTrailDuration
+            self.animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            guard let self, self.generation == gen else { return }
+            self.orderOut(nil)
+        })
+    }
+}
