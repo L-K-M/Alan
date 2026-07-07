@@ -117,6 +117,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         about.target = self
         menu.addItem(about)
 
+        let checkUpdates = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
+        checkUpdates.target = self
+        menu.addItem(checkUpdates)
+
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Alan", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
@@ -176,6 +180,40 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func showAbout(_ sender: Any?) {
         NSApp.activate()
         NSApp.orderFrontStandardAboutPanel(nil)
+    }
+
+    // Manual update check: a background GitHub Releases lookup, then an alert
+    // reporting the result. Explicit "up to date" feedback is the point of the
+    // manual item — a silent check would leave the user unsure it did anything.
+    @objc private func checkForUpdates(_ sender: Any?) {
+        UpdateChecker.check { [weak self] outcome in
+            self?.presentUpdateOutcome(outcome)
+        }
+    }
+
+    private func presentUpdateOutcome(_ outcome: UpdateChecker.Outcome) {
+        NSApp.activate()
+        let alert = NSAlert()
+        switch outcome {
+        case .upToDate(let version):
+            alert.messageText = "You’re up to date"
+            alert.informativeText = "Alan \(version) is the latest version."
+            alert.addButton(withTitle: "OK")
+        case .updateAvailable(let version, _):
+            alert.messageText = "A new version is available"
+            alert.informativeText = "Alan \(version) is available — you’re running \(UpdateChecker.currentVersion())."
+            alert.addButton(withTitle: "Download…")
+            alert.addButton(withTitle: "Later")
+        case .failed:
+            alert.alertStyle = .warning
+            alert.messageText = "Couldn’t check for updates"
+            alert.informativeText = "Alan couldn’t reach GitHub to check for a newer version. Please try again later."
+            alert.addButton(withTitle: "OK")
+        }
+        let response = alert.runModal()
+        if case .updateAvailable(_, let url) = outcome, response == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // Clicking the Dock icon with no window open should open Settings —
