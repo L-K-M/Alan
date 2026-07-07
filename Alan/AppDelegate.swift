@@ -199,18 +199,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Settings ourselves, so the system's built-in prompt would just be a
         // second dialog stacked on top. Querying trust still lists Alan under
         // Accessibility, giving the user a checkbox to flip.
-        guard !AXIsProcessTrusted() else { return false }
+        guard !AXIsProcessTrusted() else {
+            // Remember that the grant has been held, so a future launch where
+            // it's missing can be recognized as an update reset rather than a
+            // first run. Only ever set true — never cleared.
+            UserDefaults.standard.set(true, forKey: Key.hadAccessibilityGrant)
+            return false
+        }
 
         openAccessibilitySettings()
 
         let alert = NSAlert()
         alert.messageText = "Accessibility Permission Required"
-        alert.informativeText = """
-        Alan needs Accessibility permission to highlight the focused window.
+        // If Alan has held the grant before, the likeliest reason it's gone is a
+        // fresh ad-hoc-signed update presenting a different code signature to
+        // TCC. Guide the user to re-add Alan instead of implying a first-run
+        // setup, which is confusing when they granted it once already.
+        if UserDefaults.standard.bool(forKey: Key.hadAccessibilityGrant) {
+            alert.informativeText = """
+            A recent update may have reset Alan’s Accessibility permission.
 
-        Enable “Alan” in System Settings → Privacy & Security → Accessibility \
-        and Alan will start by itself — no relaunch needed.
-        """
+            Re-enable “Alan” in System Settings → Privacy & Security → \
+            Accessibility — remove any old “Alan” entry first, then re-add \
+            /Applications/Alan.app — and Alan will start by itself, no relaunch \
+            needed.
+            """
+        } else {
+            alert.informativeText = """
+            Alan needs Accessibility permission to highlight the focused window.
+
+            Enable “Alan” in System Settings → Privacy & Security → Accessibility \
+            and Alan will start by itself — no relaunch needed.
+            """
+        }
         // First button is the default (bound to Return). It must NOT be a
         // destructive action: a new user's reflexive Return should open
         // Settings, not quit the app on its first launch.
@@ -255,6 +276,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // The panel doesn't close itself when dismissed via abortModal.
         alert.window.orderOut(nil)
+        // The grant is in hand now; remember it for update detection next time.
+        UserDefaults.standard.set(true, forKey: Key.hadAccessibilityGrant)
         return true
     }
 

@@ -69,6 +69,23 @@ incremental Release build, reveal in Finder, `--clean`, `--run`,
 [lkm-build](https://github.com/L-K-M/release-tool) tool; plain
 `xcodebuild` needs nothing.)
 
+## Updating
+
+The releases are only ad-hoc signed (see [Install](#install)), and macOS ties
+the Accessibility permission to an app's code-signing identity. A freshly
+downloaded build can therefore present as a "different" app to the system and
+lose the grant — so after replacing `Alan.app`, Alan may stop drawing borders
+until you re-authorize it:
+
+1. Open **System Settings → Privacy & Security → Accessibility**.
+2. If an old **Alan** entry is listed, remove it (select it, click **–**).
+3. Add the new `/Applications/Alan.app` and turn it on.
+
+Alan notices this on launch and, if it has held the permission before, says a
+recent update likely reset it rather than showing the first-run text. Signing
+with a Developer ID and notarizing would remove this step entirely and is the
+long-term fix.
+
 ## Configuration
 
 Everything lives in the status-bar item (the little window icon):

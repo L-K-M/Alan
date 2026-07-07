@@ -74,6 +74,10 @@ struct Key {
     static let showInScreenshots = "showInScreenshots"
     static let contrastCasing = "contrastCasing"
     static let focusTrail = "focusTrail"
+    // Sticky flag: set true once Accessibility has ever been granted, so a
+    // later launch where trust has vanished can tell a first run from an update
+    // that reset the grant. Internal state, not a user setting — not observed.
+    static let hadAccessibilityGrant = "hadAccessibilityGrant"
 
     // Every key the highlighter reacts to. FocusHighlighter installs a KVO
     // observer per key so that external writes — `defaults write` from
