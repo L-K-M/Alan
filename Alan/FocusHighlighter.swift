@@ -212,6 +212,10 @@ class FocusHighlighter {
         updateHotkeyRegistration()
         updateShakeMonitor()
 
+        // Apply a screenshot-visibility toggle live to every overlay window.
+        highlightWindow.applyOverlaySharingType()
+        dimWindows.forEach { $0.applyOverlaySharingType() }
+
         // Re-evaluate from scratch rather than redrawing the remembered
         // frame, so settings that decide *whether* the border shows (hide
         // when maximized, excluded apps) apply the moment they're toggled.

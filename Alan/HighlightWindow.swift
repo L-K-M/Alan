@@ -28,9 +28,10 @@ class HighlightWindow: NSWindow {
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         self.isReleasedWhenClosed = false
         // Keep the border out of screenshots, screen recordings, and screen
-        // shares — a pulsing border broadcast to a whole meeting is a
-        // distraction, not a focus aid.
-        self.sharingType = .none
+        // shares by default — a pulsing border broadcast to a whole meeting is
+        // a distraction, not a focus aid. Opt-in via Key.showInScreenshots for
+        // anyone documenting their setup or presenting the border itself.
+        applyOverlaySharingType()
 
         self.contentView = HighlightView(frame: .zero)
     }
@@ -379,9 +380,10 @@ class DimWindow: NSWindow {
         // a full-screen app) otherwise stay undimmed, breaking the effect.
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         self.isReleasedWhenClosed = false
-        // The dim shouldn't be captured either — spotlight mode would black out
-        // the whole shared screen otherwise.
-        self.sharingType = .none
+        // The dim shouldn't be captured either by default — spotlight mode
+        // would black out the whole shared screen otherwise. Same opt-in as the
+        // border (Key.showInScreenshots).
+        applyOverlaySharingType()
 
         self.contentView = DimView(frame: .zero)
     }
@@ -452,5 +454,15 @@ class DimView: NSView {
 
         NSColor.black.withAlphaComponent(CGFloat(dimLevel)).setFill()
         path.fill()
+    }
+}
+
+extension NSWindow {
+    // The overlay windows' capture visibility. `.none` (the default) hides the
+    // window from screenshots, recordings, and screen shares; `.readOnly`
+    // exposes it to capture without granting write access. Not `.readWrite` —
+    // capture never needs to write to the overlay.
+    func applyOverlaySharingType() {
+        sharingType = UserDefaults.standard.bool(forKey: Key.showInScreenshots) ? .readOnly : .none
     }
 }
