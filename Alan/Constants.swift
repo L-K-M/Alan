@@ -89,6 +89,7 @@ enum BorderStyle: String, CaseIterable {
     case dashed
     case ants        // marching ants — dashes whose phase cycles
     case handDrawn   // an xkcd-style wobble
+    case corners     // four L-shaped corner brackets — a viewfinder reticle
 
     // Menu-facing labels, in the order shown in the popup.
     var label: String {
@@ -97,6 +98,7 @@ enum BorderStyle: String, CaseIterable {
         case .dashed: return "Dashed"
         case .ants: return "Marching ants"
         case .handDrawn: return "Hand-drawn"
+        case .corners: return "Corner brackets"
         }
     }
 

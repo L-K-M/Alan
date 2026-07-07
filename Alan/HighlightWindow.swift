@@ -229,6 +229,8 @@ class HighlightView: NSView {
             // Reduce Motion renders a static hand-drawn look.
             let seed = reduceMotion ? 0 : Int(Date().timeIntervalSinceReferenceDate * 3)
             path = wobblePath(around: borderBounds, seed: seed)
+        } else if style == .corners {
+            path = cornerBracketPath(around: borderBounds)
         } else if cornerRadius > 0 {
             path = NSBezierPath(roundedRect: borderBounds, xRadius: CGFloat(cornerRadius), yRadius: CGFloat(cornerRadius))
         } else {
@@ -309,6 +311,44 @@ class HighlightView: NSView {
             color.setStroke()
             path.stroke()
         }
+    }
+
+    // MARK: - Corner brackets
+
+    // Four L-shaped corner brackets — a camera-focus / viewfinder reticle — as
+    // one path of four disjoint subpaths (stroke() strokes them all). Covers
+    // far less of the window than a full outline, and is on-the-nose for an app
+    // about focus. Corner radius is intentionally ignored, like the wobble.
+    static func cornerBracketPath(around rect: CGRect) -> NSBezierPath {
+        let arm = max(8, min(rect.width, rect.height) * 0.18)
+        // Clamp per dimension so opposite arms can't overlap on a small or thin
+        // window (they meet in the middle at worst, never cross).
+        let armX = min(arm, rect.width / 2)
+        let armY = min(arm, rect.height / 2)
+        let minX = rect.minX, minY = rect.minY, maxX = rect.maxX, maxY = rect.maxY
+
+        let path = NSBezierPath()
+        // Each corner: run in along one edge, to the corner, out along the
+        // other. The miter join at the corner keeps the elbow crisp.
+        path.move(to: NSPoint(x: minX, y: minY + armY))
+        path.line(to: NSPoint(x: minX, y: minY))
+        path.line(to: NSPoint(x: minX + armX, y: minY))
+
+        path.move(to: NSPoint(x: maxX - armX, y: minY))
+        path.line(to: NSPoint(x: maxX, y: minY))
+        path.line(to: NSPoint(x: maxX, y: minY + armY))
+
+        path.move(to: NSPoint(x: maxX, y: maxY - armY))
+        path.line(to: NSPoint(x: maxX, y: maxY))
+        path.line(to: NSPoint(x: maxX - armX, y: maxY))
+
+        path.move(to: NSPoint(x: minX + armX, y: maxY))
+        path.line(to: NSPoint(x: minX, y: maxY))
+        path.line(to: NSPoint(x: minX, y: maxY - armY))
+
+        // Round the free ends of the arms; the elbows keep the default miter.
+        path.lineCapStyle = .round
+        return path
     }
 
     // MARK: - Hand-drawn wobble
