@@ -902,10 +902,17 @@ class FocusHighlighter {
         }
 
         for (window, screen) in zip(dimWindows, screens) {
-            // Windows spanning displays get a cut-out on every screen they
-            // touch; screens the window isn't on are dimmed entirely.
-            let local = cutout.intersects(screen.frame) ? cutout : nil
-            window.update(screenFrame: screen.frame, cutout: local)
+            // Dim only the visible frame — the area inside the menu bar and
+            // Dock — not the whole screen. The dim window sits at .statusBar
+            // level (above both), so sizing it to screen.frame painted the dim
+            // over the menu bar and Dock; the focus aid never needs to dim the
+            // system chrome. Windows spanning displays get a cut-out on every
+            // screen they touch; screens the window isn't on are dimmed
+            // entirely. DimWindow.update offsets the cut-out by the frame it's
+            // handed, so passing visibleFrame keeps the local cut-out correct.
+            let area = screen.visibleFrame
+            let local = cutout.intersects(area) ? cutout : nil
+            window.update(screenFrame: area, cutout: local)
         }
     }
 
