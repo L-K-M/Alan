@@ -44,6 +44,7 @@ class PrefsWindowController: NSWindowController {
     private let shortcutRecorder = ShortcutRecorderButton()
     private let shakeToFindCheckbox = NSButton(checkboxWithTitle: "Shake mouse to find window", target: nil, action: nil)
     private let flashOnSpaceChangeCheckbox = NSButton(checkboxWithTitle: "Flash border when switching Spaces", target: nil, action: nil)
+    private let warpCursorOnFindCheckbox = NSButton(checkboxWithTitle: "Move the pointer to the window when finding it", target: nil, action: nil)
     private let showInScreenshotsCheckbox = NSButton(checkboxWithTitle: "Show overlays in screenshots and recordings", target: nil, action: nil)
     private let focusTrailCheckbox = NSButton(checkboxWithTitle: "Focus trail — fade a ghost border on the window you left", target: nil, action: nil)
     private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: "Launch Alan at login", target: nil, action: nil)
@@ -251,6 +252,7 @@ class PrefsWindowController: NSWindowController {
         setUp(findMyWindowCheckbox, action: #selector(findMyWindowHotkeyChanged(_:)))
         setUp(shakeToFindCheckbox, action: #selector(shakeToFindChanged(_:)))
         setUp(flashOnSpaceChangeCheckbox, action: #selector(flashOnSpaceChangeChanged(_:)))
+        setUp(warpCursorOnFindCheckbox, action: #selector(warpCursorOnFindChanged(_:)))
         setUp(showInScreenshotsCheckbox, action: #selector(showInScreenshotsChanged(_:)))
         setUp(focusTrailCheckbox, action: #selector(focusTrailChanged(_:)))
         setUp(launchAtLoginCheckbox, action: #selector(launchAtLoginChanged(_:)))
@@ -304,6 +306,7 @@ class PrefsWindowController: NSWindowController {
             shortcutRow,
             shakeToFindCheckbox,
             flashOnSpaceChangeCheckbox,
+            warpCursorOnFindCheckbox,
             showInScreenshotsCheckbox,
             focusTrailCheckbox,
             divider,
@@ -485,6 +488,7 @@ class PrefsWindowController: NSWindowController {
         findMyWindowCheckbox.state = defaults.bool(forKey: Key.findMyWindowHotkey) ? .on : .off
         shakeToFindCheckbox.state = defaults.bool(forKey: Key.shakeToFind) ? .on : .off
         flashOnSpaceChangeCheckbox.state = defaults.bool(forKey: Key.flashOnSpaceChange) ? .on : .off
+        warpCursorOnFindCheckbox.state = defaults.bool(forKey: Key.warpCursorOnFind) ? .on : .off
         showInScreenshotsCheckbox.state = defaults.bool(forKey: Key.showInScreenshots) ? .on : .off
         focusTrailCheckbox.state = defaults.bool(forKey: Key.focusTrail) ? .on : .off
         perAppColorsCheckbox.state = defaults.bool(forKey: Key.perAppColors) ? .on : .off
@@ -614,6 +618,10 @@ class PrefsWindowController: NSWindowController {
 
     @objc func flashOnSpaceChangeChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.flashOnSpaceChange)
+    }
+
+    @objc func warpCursorOnFindChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.warpCursorOnFind)
     }
 
     @objc func showInScreenshotsChanged(_ sender: NSButton) {

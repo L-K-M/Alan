@@ -409,6 +409,19 @@ class FocusHighlighter {
 
         guard var frame = currentFocusCocoaFrame() else { return }
 
+        // Optionally bring the pointer home to the focused window — losing the
+        // window and losing the cursor tend to be the same moment. Opt-in and
+        // off by default, so this second resolution is only paid when enabled.
+        // Warp in the window's *AX* frame (top-left global Quartz space, which
+        // CGWarpMouseCursorPosition also uses); the Cocoa flip would land the
+        // cursor mirrored. Re-associate immediately so the cursor doesn't feel
+        // stuck for the ~0.25 s HID suppression interval a warp otherwise adds.
+        if UserDefaults.standard.bool(forKey: Key.warpCursorOnFind),
+           let axFrame = currentFocusAXFrame() {
+            CGWarpMouseCursorPosition(CGPoint(x: axFrame.midX, y: axFrame.midY))
+            CGAssociateMouseAndMouseCursorPosition(1)
+        }
+
         flashCount = 0
         highlightWindow.updateFrame(to: frame)
 
@@ -460,6 +473,14 @@ class FocusHighlighter {
     private func currentFocusCocoaFrame() -> CGRect? {
         guard let (_, axFrame) = currentFocusedWindow() else { return nil }
         return cocoaRect(fromAXRect: axFrame)
+    }
+
+    // The focused window's raw AX frame right now (top-left global Quartz
+    // space, unflipped). Used for CGWarpMouseCursorPosition, which lives in that
+    // same space — the Cocoa flip currentFocusCocoaFrame() applies would mirror
+    // a warp vertically.
+    private func currentFocusAXFrame() -> CGRect? {
+        currentFocusedWindow()?.frame
     }
 
     // MARK: - AX notifications
