@@ -19,6 +19,45 @@ needs on-device confirmation.
 
 ---
 
+## Status of this pass
+
+22 of the 46 entries were implemented, each on its own branch off `main` with
+a PR; the other 24 are deferred with a per-entry rationale (mostly: a rewrite
+too large to verify without a macOS build, or a maintainer taste call). This
+pass was authored on Linux with no Xcode, so nothing was compiled — the fixes
+were verified by close reading, and CI builds each PR on macOS. Items marked
+**[dev]** additionally want an on-device sanity check; the headline
+raw-bounds fix (PR #46) is the one most worth verifying against a real Finder
+copy window.
+
+| PR | Branch | Entries |
+|---|---|---|
+| #46 | `claude/fix-copy-window-raw-bounds` | BUG-1, BUG-2, BUG-3, BUG-4 |
+| #47 | `claude/fix-appdelegate-modernize` | BUG-7, UX-5 |
+| #48 | `claude/settings-cmd-w` | UX-1, UX-2 |
+| #49 | `claude/fix-observer-create-retry` | BUG-9 |
+| #50 | `claude/fix-preview-idle-wakeups` | PERF-3 |
+| #51 | `claude/perf-handdrawn-redraw` | PERF-5 |
+| #52 | `claude/visual-spotlight-chrome` | VIS-2 |
+| #53 | `claude/ci-pin-xcode` | UX-9 |
+| #54 | `claude/shortcut-recorder-policy` | UX-3 |
+| #55 | `claude/launch-login-guidance` | UX-4 |
+| #56 | `claude/overlay-flash-glide` | BUG-6, BUG-8 |
+| #57 | `claude/idea-accent-color` | IDEA-2 |
+| #58 | `claude/idea-viewfinder-style` | IDEA-3 |
+| #59 | `claude/show-in-screenshots` | FEAT-1 |
+| #60 | `claude/visual-contrast-casing` | VIS-4 |
+| #61 | `claude/idea-focus-trail` | IDEA-1 |
+
+Several branches touch `FocusHighlighter.swift`, `PrefsWindowController.swift`,
+`HighlightWindow.swift`, or `Constants.swift`, but in disjoint functions;
+where two extend the same list (`Key.allObservedKeys`, the Behavior-tab stack)
+the conflict is a one-line resolution. Merge the headline fix (#46) first,
+since PERF-6 and IDEA-8 were deferred specifically to avoid colliding with the
+resolution/`flashBorder` regions it reshapes.
+
+---
+
 ## A. Bugs
 
 ### BUG-1 · Copy-window headline: raw-bounds last resort
@@ -51,7 +90,7 @@ wrong window until an unrelated event. This is the still-open core of the
 Leave the cross-process branch (`:1048`) and drag gate (`:1059`) untouched.
 This removes the wrong-window outcome for **all** nil-return causes at once,
 which is why BUG-3/BUG-4 below are only hardening on top of it.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/fix-copy-window-raw-bounds` (PR #46).
 
 ### BUG-2 · Copy-window: single 0.25s settle-refresh, no retry on wrong-but-non-nil
 *sev medium / conf high / [dev]*
@@ -71,7 +110,7 @@ re-arm while budget remains at back-offs `[0.12, 0.3, 0.6]` (index
 attempt in the timer body. Self-terminating (stops at 0), no polling (AX
 posts no continuous notifications during a drag). Gives the case ~3 retries
 out to ~1s.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/fix-copy-window-raw-bounds` (PR #46).
 
 ### BUG-3 · Copy-window: `appWindowMatching` cap
 *sev low / conf medium / [dev]*
@@ -85,7 +124,7 @@ loosening risks matching a wrong same-size window). Sheets via
 `kAXSheetsAttribute` are optional/low-value (a focused sheet is already
 resolved upstream via `kAXTopLevelUIElementAttribute`). Largely subsumed by
 BUG-1's fallback, which handles every nil-return cause.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/fix-copy-window-raw-bounds` (PR #46) — examine cap raised 20→40.
 
 ### BUG-4 · Copy-window: `topmostWindowBounds` layer ceiling
 *sev low / conf medium / [dev]*
@@ -98,7 +137,7 @@ coincidentally frame-matches a background window.
 menu 24 / statusBar 25 / popUpMenu 101). Low risk — the bounds are
 cross-validated downstream by the three matchers. **Do not** lower the 40×40
 size floor. Verify on device that real modal panels report layer 8.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/fix-copy-window-raw-bounds` (PR #46) — layer ceiling raised 3→8.
 
 ### BUG-5 · Copy-window: no signal for a re-ordered pre-existing window
 *sev low / conf low / [dev]*
@@ -113,7 +152,7 @@ a poll would fight this file's deliberate idle-wakeup minimization. If ever
 wanted, a bounded frontmost-and-idle-gated ~1.5s reconciliation timer that
 pre-checks `topmostWindowBounds` against a cached value and only calls
 `refresh()` on a change (never during a drag; reset on screen-param change).
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — no clean signal exists (AX exposes no z-order-change notification, and kAXWindowsAttribute doesn't change on a pure re-order); a poll would fight the app's deliberate idle-wakeup minimization. The raw-bounds fallback (BUG-1) plus the existing leftMouseUp refresh already cover the click-driven case. Documented as a platform limitation.
 
 ### BUG-6 · Glide timers resurrect a hidden overlay
 *sev medium / conf medium / [dev]*
@@ -134,7 +173,7 @@ switch) keeps re-fronting and defeats the flash's off-phase `orderOut`.
 needs a glide-from position). In `flashBorder`, right after the `flashTimer`
 guard, invalidate both `borderAnimationTimer` and `spotlightAnimationTimer`
 so the flash is the sole overlay driver. `hideHighlight` already cancels both.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/overlay-flash-glide` (PR #56).
 
 ### BUG-7 · Permission-alert `abortModal()` outside a modal session
 *sev low / conf medium / [dev]*
@@ -150,7 +189,7 @@ that gap fires `abortModal()` with no session — raising
 `if AXIsProcessTrusted(), NSApp.modalWindow != nil { NSApp.abortModal() }`.
 During `runModal()` the alert is `modalWindow` so the abort still dismisses;
 in the gaps `modalWindow` is nil so no stray exception.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/fix-appdelegate-modernize` (PR #47).
 
 ### BUG-8 · `flashBorder` replays a stale frame
 *sev low / conf high*
@@ -165,7 +204,7 @@ make `frame` a `var` seeded from it; in the strobe on-phase (`:411`) re-query
 `updateFrame(to: frame)`, falling back to the retained value on transient
 nil. Keep drawing via `highlightWindow.updateFrame` directly (don't touch
 `displayedBorderFrame`). ~3 extra IPCs across the strobe.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/overlay-flash-glide` (PR #56).
 
 ### BUG-9 · `AXObserverCreate` failure with no retry
 *sev low / conf medium*
@@ -178,7 +217,7 @@ user switches away and back.
 **Fix:** In the create-failure `guard else`, call
 `scheduleObserverRetry(pid: pid)` before returning. Self-limiting (per-app
 budget caps at 5; retry only fires while that pid is still frontmost).
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/fix-observer-create-retry` (PR #49).
 
 ---
 
@@ -205,7 +244,7 @@ the last event can't have changed frontmost and `lastFocusedWindow`'s owning
 pid == `frontPid` and its `axFrame` reads, returns it directly (1 IPC, no
 snapshot). Default unclassified notifications to the full path. Also skip the
 settle-refresh for move/resize.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — the notification-classification refactor changes the AX callback signature and reshapes the resolution fast-path — too broad to land safely without a macOS build/profile, and it overlaps the same resolution path the headline fix reshapes. Revisit after PR #46 merges.
 
 ### PERF-2 · Wall-clock animation timers instead of a display link
 *sev low / conf high / [dev]*
@@ -226,7 +265,7 @@ guard and the drag-bypass untouched. Endgame: a render-server-animated
 Gaussian passes (PERF-4).
 **Deferred rationale:** a five-site animation-architecture rewrite that can't
 be build/behavior-verified without macOS.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — a five-site display-link / CAShapeLayer rewrite; documented in full, not shipped blind without a device to verify vsync behavior.
 
 ### PERF-3 · Settings-preview 30Hz timer never stops after close
 *sev medium / conf high*
@@ -243,7 +282,7 @@ prior observer; `guard let window else { stopTimer(); return }`; observe with
 `object: window`; sync via
 `updateTimer(visible: window.occlusionState.contains(.visible))`. Callback +
 `updateTimer` start/stop the 30Hz timer; `deinit` removes observer + stops.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/fix-preview-idle-wakeups` (PR #50).
 
 ### PERF-4 · Glow/stronger-shadow Gaussian passes redrawn per animation tick
 *sev medium / conf high / [dev]*
@@ -264,7 +303,7 @@ party/ants/pulse — those change the blur inputs every frame.
 **Deferred rationale:** best done as part of the PERF-2 layer rewrite;
 risky to land blind. PERF-5 removes a chunk of this cost cheaply in the
 meantime.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — belongs with the PERF-2 layer rewrite (the render-server path deletes these CPU Gaussians for free); PERF-5 removes a chunk of the cost cheaply in the meantime.
 
 ### PERF-5 · Hand-drawn border redraws 30×/s though the wobble changes ~3×/s
 *sev low / conf high*
@@ -280,7 +319,7 @@ a pixel-identical `wobblePath` (a per-point double-hash loop) and re-stroke it
 from a cached `lastAnimatedSeed`. Keep the 30Hz timer so the change is
 observed within ~33ms. Live settings/geometry changes still repaint via the
 `updateFrame` path; under Reduce Motion no timer runs.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/perf-handdrawn-redraw` (PR #51).
 
 ### PERF-6 · Live-drag re-runs the whole focus chain per 30Hz tick
 *sev low / conf medium / [dev]*
@@ -294,7 +333,7 @@ would do.
 fast-path: `if dragTimer != nil, let dragged = lastFocusedWindow, let frame = axFrame(of: dragged) { resolved = (dragged, frame) }` else fall through to
 the full `currentFocusedWindow()`. A window-closed nil or stalled read (sets
 `lastResolutionTimedOut`) falls back; mouse-up re-syncs. Downstream untouched.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — the drag fast-path edits the same resolution region as BUG-1; deferred to avoid a merge conflict with the headline fix, and a clean follow-up once PR #46 lands.
 
 ### PERF-7 · `forceUpdate()` does an AX round-trip on every defaults change
 *sev low / conf medium · carried from round two*
@@ -310,7 +349,7 @@ maximize-hiding, spotlight mode); for pure-appearance keys (colors, width,
 inset, radius, style, glow, shadow) just repaint the current frame
 (`highlightWindow.contentView?.needsDisplay = true`) without re-resolving.
 Naturally folds into the UX-8 `Settings` facade.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — only worth it if it shows in a profile; folds naturally into the UX-8 Settings facade.
 
 ---
 
@@ -342,7 +381,7 @@ pool.
 **Deferred rationale:** a core drawing rework touching many call sites,
 unbuildable/unverifiable off-device; the single-window path is correct on the
 overwhelmingly common single-display and single-screen-window cases.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — a per-display border-window pool is a core drawing rework touching many call sites, unverifiable off-device; the single-window path is correct on the overwhelmingly common single-display and single-screen-window cases. Documented as the DimWindow-pool template.
 
 ### VIS-2 · Spotlight dim covers the menu bar and Dock
 *sev low / conf high*
@@ -357,7 +396,7 @@ the cutout by the window origin, so the local math stays correct. **Do not**
 lower the dim window's level (it must stay above app windows to dim them);
 frame size is the right lever. (If dimming chrome is intended, keep it and
 document it, optionally behind a preference defaulting on.)
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/visual-spotlight-chrome` (PR #52).
 
 ### VIS-3 · Border halo paints over the menu bar / Dock at a screen edge
 *sev low / conf high*
@@ -372,7 +411,7 @@ over normal app windows and any floating panels you care about — or, more
 surgically, clip the stroke/glow/shadow out of the menu-bar/Dock rects in
 `HighlightView.draw` (intersect the screen's `frame` minus `visibleFrame`).
 Only bites with opt-in effects at an edge.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — lowering the border window's level (or clipping to chrome rects) risks regressing the float-over-app-windows / full-screen-Space behavior the .statusBar level + .fullScreenAuxiliary give; it only bites with opt-in glow/shadow at a screen edge. Left as a documented judgment call.
 
 ### VIS-4 · A border matching the background is invisible — contrast casing + Increase Contrast
 *sev medium / conf high · merges round-five visual bug and the "contrast casing" idea*
@@ -397,7 +436,7 @@ observer at `:154-160` already repaints on toggle, so it applies live.
 Optionally add a user-facing `Key.contrastCasing` toggle so the casing can be
 on even without Increase Contrast; or gate the whole thing on `increaseContrast`
 to preserve the exact default look (maintainer taste).
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/visual-contrast-casing` (PR #60).
 
 ### VIS-5 · Default square corners overhang the window's ~10pt rounded corners
 *sev low / conf high · maintainer taste call*
@@ -411,7 +450,7 @@ style" control (Auto / Square / Custom) beside the radius stepper. In
 inset)` so the border's corner arc is concentric with the glass and never
 overhangs; apply the same computed radius to the stronger-shadow inner-exclude
 path. Defensible to leave as-is given the overhang is only ~2pt.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — maintainer taste call — changing the registered default alters every existing install's look. The Auto/Square/Custom control is documented for a maintainer to add.
 
 ### VIS-6 · Appearance preview clips glow/shadow halos
 *sev low / conf medium*
@@ -425,7 +464,7 @@ from 150 to ~190. **Correction:** removing `masksToBounds` does *not* help —
 a layer-backed view can only paint into its bounds-sized backing store, so the
 halo clips regardless; that flag only controls the 6pt corner rounding. Only
 enlarging the room eliminates the clip. Faint ~1pt tail, low priority.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — a faint ~1 pt clip only at the width-20 / inset-1 extreme with stronger shadow; low priority, documented with the correct fix (enlarge the mock-window room, not remove masksToBounds).
 
 ### VIS-7 · Stronger shadow drops the wrong way (flipped view) vs the preview
 *sev low / conf low / [dev]*
@@ -438,7 +477,7 @@ a 25pt blur keeps it subtle.
 `let flipped = NSGraphicsContext.current?.isFlipped ?? false; shadow.shadowOffset = NSSize(width: 0, height: flipped ? 3 : -3)` —
 so both cast a natural downward drop. Leave the glow (offset 0,0) alone.
 Confirm direction visually on device.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — needs on-device confirmation of the perceptual shadow direction (a 3 pt offset under a 25 pt blur can only be validated visually); the context-sign fix is documented.
 
 ---
 
@@ -453,7 +492,7 @@ mouse.
 **Fix:** Add a File menu with a "Close" item (`keyEquivalent="w"`, action
 `performClose:` to First Responder) — ~10 lines of xib — or add "Close" to the
 Window menu. The window is already `.closable`.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/settings-cmd-w` (PR #48).
 
 ### UX-2 · App menu says "Preferences…" while the rest says "Settings"
 *sev low / conf high*
@@ -463,7 +502,7 @@ Window menu. The window is already `.closable`.
 **Fix:** Change the xib title to "Settings…" (keep `keyEquivalent=","`, the
 id, and the `showPrefs:` connection). Pure string edit; pairs with UX-1 (same
 file).
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/settings-cmd-w` (PR #48).
 
 ### UX-3 · Hotkey recorder: reserved combos accepted, bare F-keys rejected
 *sev medium / conf high*
@@ -482,7 +521,7 @@ a `Set<Int>` of `kVK_F1…kVK_F12` (explicit set, **not** a range — `F1...F20`
 is `122...90` and traps) that bypasses the modifier guard; `carbonModifiers`
 already yields 0 and `RegisterEventHotKey` accepts it. (On media-key hardware
 a bare F-key may need Fn — worth an on-device check; (A) is the priority.)
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/shortcut-recorder-policy` (PR #54).
 
 ### UX-4 · Launch-at-login failure is a silent beep
 *sev medium / conf high*
@@ -500,7 +539,7 @@ try again" plus a "Reveal in Finder" button wired to
 `NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])`.
 Keep the `refreshLaunchAtLoginStatus()` call. Guard the button-index handling
 so "Reveal in Finder" only exists when the translocation branch added it.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/launch-login-guidance` (PR #55).
 
 ### UX-5 · Deprecated `NSApp.activate(ignoringOtherApps:)` ×3
 *sev low / conf high*
@@ -511,7 +550,7 @@ so "Reveal in Finder" only exists when the translocation branch added it.
 **Fix:** Replace all three with `NSApp.activate()`. Each is user-initiated and
 paired with `makeKeyAndOrderFront`, so the system honors the switch. Bundle
 with BUG-7 (same file).
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/fix-appdelegate-modernize` (PR #47).
 
 ### UX-6 · Ad-hoc signed updates re-break the Accessibility grant — undocumented
 *sev medium / conf medium / [dev]*
@@ -529,7 +568,7 @@ long-term fix. (2) **Runtime** (recommended) — remember a prior grant with a
 `Key.hadAccessibilityGrant` flag; if trust is currently false but the flag is
 true, branch the permission alert's `informativeText` to an update-specific
 message. Flag transitions false→true only; wording change only.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — hinges on TCC-vs-signature behavior that can't be verified off-device; the docs half (README Updating section) and the runtime "you were updated" alert are documented for a maintainer with a device.
 
 ### UX-7 · No test target despite pure, permission-free seams
 *sev low / conf high*
@@ -549,7 +588,7 @@ four unambiguously pure ones: `perAppColor`, `carbonModifiers`, `wobbleNoise`,
 `framesRoughlyEqual`.
 **Deferred rationale:** hand-editing `project.pbxproj` to add a target is
 error-prone and unbuildable off-device; best done with Xcode in hand.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — hand-editing project.pbxproj to add a test target is error-prone and unbuildable off-device; best done with Xcode in hand. The pure seams to test and the private→internal lifts are documented.
 
 ### UX-8 · Scattered `UserDefaults` reads / no `Settings` facade
 *sev low / conf high · round two, carried · refactor*
@@ -565,7 +604,7 @@ authoritative. Pure internal cleanup; pairs well with UX-7 (so the clamps are
 covered) and enables PERF-7.
 **Deferred rationale:** broad cross-file refactor with wide merge surface;
 higher value once the test target (UX-7) exists to catch regressions.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — broad cross-file refactor with wide merge surface; higher value once UX-7's tests exist to catch regressions.
 
 ### UX-9 · CI doesn't pin an Xcode version
 *sev low / conf high*
@@ -578,7 +617,7 @@ version actually present in the `macos-26` manifest** (the image ships Xcode
 26.x, so `16.x` is wrong); prefer `maxim-lobanov/setup-xcode` with
 `xcode-version: latest-stable` to avoid hard-coding a folder name. CI-hygiene
 only.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/ci-pin-xcode` (PR #53).
 
 ### UX-10 · No localization
 *sev low / conf high*
@@ -591,7 +630,7 @@ the `Exclude "…"` title); enable Base Internationalization on `MainMenu.xib`.
 Mechanical, stageable, no runtime impact for the English build.
 **Deferred rationale:** lowest priority; large mechanical churn with no
 behavior change, better staged with Xcode's catalog tooling.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — large mechanical churn with no behavior change, lowest priority; best staged with Xcode's String Catalog tooling.
 
 ---
 
@@ -607,7 +646,7 @@ replace the hard-coded `.none` with `applySharingType()` in both window
 `init()`s (sets `.readOnly` when on — **not** `.readWrite` — else `.none`);
 call `applySharingType()` on the border and each dim window from
 `forceUpdate()` so it applies live; add a Behavior-tab checkbox.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/show-in-screenshots` (PR #59).
 
 ### FEAT-2 · Update mechanism
 *sev low / conf high*
@@ -625,7 +664,7 @@ Ship the **manual** "Check for Updates…" status-menu item first (bypasses any
 gate, gives explicit "up to date" feedback). Optional automatic weekly check
 (gated on a `lastUpdateCheck` date, a `skippedVersion`, and an opt-in
 preference defaulting off) can follow.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — a dependency-free update check is network code that can't be exercised off-device; the manual "Check for Updates…" menu item (with component-wise numeric version compare) is documented as the recommended first slice for a follow-up.
 
 ---
 
@@ -647,7 +686,7 @@ non-nil, ≠ `cocoaFrame`), position the ghost there, fade `alphaValue` 1→0 ov
 the duration via `NSAnimationContext`, order out on completion, restart on a
 mid-fade change. Whole-window alpha fade needs no per-frame redraw. Under
 Reduce Motion, a single static reveal.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/idea-focus-trail` (PR #61).
 
 ### IDEA-2 · Match the system accent color as a zero-config border source
 *sev medium / conf high*
@@ -660,7 +699,7 @@ greys out the two wells + per-app checkbox when on. **Load-bearing:** an accent
 change does *not* fire `viewDidChangeEffectiveAppearance`, so register a
 `NSColor.systemColorsDidChangeNotification` observer in `start()` calling
 `forceUpdate()` (gate on `useAccentColor` to avoid churn).
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/idea-accent-color` (PR #57).
 
 ### IDEA-3 · Viewfinder / corner-bracket border style
 *sev low / conf high*
@@ -675,7 +714,7 @@ corner subpaths from `borderBounds` (arm length `max(8, min(w,h)*0.18)`,
 clamped per dimension so opposite arms can't overlap), `lineCapStyle = .round`.
 The dash block is already style-gated; effectiveWidth / stronger-shadow / glow
 / base stroke / pulse all apply unchanged. Preview renders it live for free.
-**Resolution:** _Pending._
+**Resolution:** ✅ Implemented → `claude/idea-viewfinder-style` (PR #58).
 
 ### IDEA-4 · Sonar-ping find animation
 *sev low / conf high*
@@ -690,7 +729,7 @@ concentric rounded-rects at `radius = progress * maxReach`,
 gesture fires). Shared by the hotkey, shake, and Space-change flash. Under
 Reduce Motion, a single static ring held briefly. Guard overlapping pings with
 a `pingTimer` mirroring `flashTimer`.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — a new transient PingWindow; a good follow-up, left out only to bound this pass's scope. Fully specified above.
 
 ### IDEA-5 · Spotlight and border at the same time
 *sev low / conf high / [dev]*
@@ -704,7 +743,7 @@ when off); relax the pulse guard to allow the pulse when `spotlightWithBorder`;
 add a Behavior-tab checkbox indented under spotlight and un-gate the pulse
 checkbox; draw the border in the preview's spotlight branch too. Verify on
 device the border stays above all `DimWindow`s across a full glide.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — needs on-device confirmation that the elevated border stays above every per-screen DimWindow across a full glide before shipping.
 
 ### IDEA-6 · Per-app colors sampled from the app icon's dominant color
 *sev low / conf high / [dev] · also in round two*
@@ -719,7 +758,7 @@ pixels. **Distinctiveness guards:** top hue bin < ~35% of weight
 to the hash; keep the icon *hue* but render at the hash path's fixed
 saturation/brightness so legibility and light/dark behavior match today. Worst
 case degrades to the current hash, never a pile of indistinguishable blues.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — needs on-device tuning of the icon-sampling distinctiveness thresholds against real app icons.
 
 ### IDEA-7 · Hold-to-spotlight quasimode on the find-my-window hotkey
 *sev low / conf high / [dev]*
@@ -735,7 +774,7 @@ or restore. Route dim-vs-border decisions through a `spotlightActive` accessor
 modifiers lift first): a max-hold cap timer and a transient `.flagsChanged`
 monitor, both calling the same cleanup. Verify `kEventHotKeyReleased` fires on
 device; the safety net makes a dropped release non-fatal.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — needs on-device confirmation that kEventHotKeyReleased fires reliably for this registration, plus the modifier-drop safety net; Carbon release semantics can't be verified off-device.
 
 ### IDEA-8 · Warp the cursor to the focused window on find-my-window
 *sev low / conf high / [dev]*
@@ -749,7 +788,7 @@ top-left global Quartz space with `CGWarpMouseCursorPosition`; applying the
 cocoa flip would land the cursor mirrored. Wires up the hotkey, shake, and
 Space-change gestures at once. Add a checkbox. Verify on a
 secondary/negative-origin display.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — tiny, but edits the same flashBorder head as PR #56 (overlay-flash-glide); a clean follow-up once that lands, and it needs an on-device warp check on multi-display setups.
 
 ### IDEA-9 · Transient "who has focus" chip (app icon + name)
 *sev low / conf high*
@@ -765,7 +804,7 @@ position centered above `cocoaFrame`, clamped into the screen's `visibleFrame`
 (flip below if no room). Reuse one instance; hide it in `hideHighlight`/
 paused/Space-change. Especially valuable in spotlight mode (the dim hides
 every other cue).
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — a new FocusChipWindow; a good follow-up, left out only to bound this pass's scope. Fully specified above.
 
 ### IDEA-10 · Squash-and-stretch the border as it glides
 *sev low / conf high · pure polish*
@@ -778,7 +817,7 @@ every other cue).
 eased rect. `updateFrame` always insets by `-shadowMargin`, so a larger rect
 just makes a larger window — no clipping. `moveBorder` bypasses the glide under
 Reduce Motion, so the stretch is unreachable there. Tune on device.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — pure aesthetic polish; the stretch envelope can only be tuned on-device, so shipping it blind risks an off feel.
 
 ### IDEA-11 · Optional quiet click on focus change
 *sev low / conf high · accessibility*
@@ -791,7 +830,7 @@ accessibility value, compute a lightweight focus-changed check *before* the
 maximized/full-screen returns (`:700-719`) so the cue fires there too. Add a
 Behavior-tab checkbox (not gated on spotlight — audio is orthogonal). Optional
 `.alignment` haptic sibling. Off by default.
-**Resolution:** _Pending._
+**Resolution:** ⏸️ Deferred — needs a bundled short sound asset (named system sounds aren't guaranteed present); an accessibility nicety for a follow-up.
 
 ---
 
