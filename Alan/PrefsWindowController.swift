@@ -227,7 +227,10 @@ class PrefsWindowController: NSWindowController {
             previewView.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
             previewView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             previewView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            previewView.heightAnchor.constraint(equalToConstant: 150),
+            // Tall enough that the mock window plus its stronger-shadow halo
+            // (up to ~38 pt past the frame at large widths) clears the preview
+            // edge instead of being hard-clipped into a squared-off halo.
+            previewView.heightAnchor.constraint(equalToConstant: 190),
             grid.topAnchor.constraint(equalTo: previewView.bottomAnchor, constant: 16),
             grid.centerXAnchor.constraint(equalTo: view.centerXAnchor)
         ])
@@ -895,8 +898,12 @@ final class BorderPreviewView: NSView {
         NSColor.underPageBackgroundColor.setFill()
         bounds.fill()
 
-        // Mock window, leaving room around it for inset, border, and glow
-        let windowRect = bounds.insetBy(dx: 90, dy: 38)
+        // Mock window, leaving room around it for inset, border, glow, and the
+        // stronger-shadow halo. The vertical inset has to clear that halo (~38 pt
+        // at max width): the view is layer-backed with masksToBounds, so a halo
+        // reaching past the bounds is clipped regardless of that flag — only
+        // giving the mock window more room eliminates the squared-off edge.
+        let windowRect = bounds.insetBy(dx: 90, dy: 52)
         let windowPath = NSBezierPath(roundedRect: windowRect, xRadius: 9, yRadius: 9)
         NSColor.windowBackgroundColor.setFill()
         windowPath.fill()
