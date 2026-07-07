@@ -16,6 +16,7 @@ class FocusHighlighter {
     private let systemWideElement = AXUIElementCreateSystemWide()
     private let highlightWindow = HighlightWindow()
     private let ghostBorderWindow = GhostBorderWindow()
+    private let pingWindow = PingWindow()
     private var dimWindows: [DimWindow] = []
     private var highlightVisible = false
     private var lastFrame: CGRect?
@@ -397,6 +398,21 @@ class FocusHighlighter {
     // flashes on top of the dimming.
     func flashBorder() {
         guard flashTimer == nil else { return }
+
+        // Sonar-ping mode draws expanding rings in its own window and never
+        // touches the border overlay, so — unlike the strobe below — it neither
+        // needs the flash's exclusive ownership of the overlay nor should cancel
+        // an in-flight border glide. Branch out before that bookkeeping; the
+        // ping window supersedes any prior ping on its own.
+        if FindAnimation.current == .ping {
+            if let frame = currentFocusCocoaFrame() {
+                pingWindow.ping(around: frame,
+                                color: HighlightView.currentBorderColor(),
+                                reduceMotion: Self.reduceMotion)
+            }
+            return
+        }
+
         // Own the overlay exclusively for the flash. A border or spotlight
         // glide still running would keep re-fronting the window on its own
         // schedule — the flashOnSpaceChange path fires this 0.2 s after a Space
