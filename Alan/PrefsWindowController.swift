@@ -599,9 +599,53 @@ class PrefsWindowController: NSWindowController {
                 try SMAppService.mainApp.unregister()
             }
         } catch {
-            NSSound.beep()
+            presentLaunchAtLoginError(error, enabling: sender.state == .on)
         }
         refreshLaunchAtLoginStatus()
+    }
+
+    // A bare beep left the user with no idea why the toggle sprang back. The
+    // most common register() failure is Gatekeeper app translocation — Alan was
+    // run straight from ~/Downloads, so it executes from a randomized read-only
+    // AppTranslocation path and login-item registration is refused. Surface the
+    // real error, and when the install location looks like the cause, say how
+    // to fix it and offer to reveal the app.
+    private func presentLaunchAtLoginError(_ error: Error, enabling: Bool) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = enabling
+            ? "Couldn’t enable Launch at Login"
+            : "Couldn’t disable Launch at Login"
+
+        var info = error.localizedDescription
+        let path = Bundle.main.bundlePath
+        let isTranslocated = path.contains("/AppTranslocation/")
+        let userApplications = (NSHomeDirectory() as NSString).appendingPathComponent("Applications/")
+        let inApplications = path.hasPrefix("/Applications/") || path.hasPrefix(userApplications)
+        // Additive: a signing/entitlement/launchd failure still shows its own
+        // localizedDescription; the location hint only appends when relevant.
+        let looksLikeLocation = isTranslocated || !inApplications
+        if looksLikeLocation {
+            info += "\n\nAlan is running from a temporary or non-Applications "
+                + "location. Move Alan to your Applications folder, relaunch it, "
+                + "then try again."
+            alert.addButton(withTitle: "Reveal in Finder")
+        }
+        alert.addButton(withTitle: "OK")
+        alert.informativeText = info
+
+        // Reveal is the first button only when it was added, so guard on the
+        // same flag to keep the OK-only case from mis-firing it.
+        let handle: (NSApplication.ModalResponse) -> Void = { response in
+            if looksLikeLocation, response == .alertFirstButtonReturn {
+                NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+            }
+        }
+        if let window {
+            alert.beginSheetModal(for: window, completionHandler: handle)
+        } else {
+            handle(alert.runModal())
+        }
     }
 
     @objc func addExcludedApp(_ sender: Any) {
