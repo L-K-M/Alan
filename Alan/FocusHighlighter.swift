@@ -479,7 +479,18 @@ class FocusHighlighter {
 
         var observer: AXObserver?
         guard AXObserverCreate(pid, FocusHighlighter.axCallback, &observer) == .success,
-              let observer else { return }
+              let observer else {
+            // AXObserverCreate itself failed — usually because the app's AX
+            // server is still coming up moments after launch (the same
+            // condition the partial-registration path already retries). Arm a
+            // retry so this app's window events aren't permanently missed while
+            // it stays frontmost; without it, the border never follows or
+            // appears for it until the user switches away and back. Self-
+            // limiting: the per-app budget caps at 5 and the retry only fires
+            // while this pid is still frontmost.
+            scheduleObserverRetry(pid: pid)
+            return
+        }
 
         let appElement = AXUIElementCreateApplication(pid)
         let refcon = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
