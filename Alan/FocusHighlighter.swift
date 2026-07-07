@@ -15,6 +15,7 @@ class FocusHighlighter {
 
     private let systemWideElement = AXUIElementCreateSystemWide()
     private let highlightWindow = HighlightWindow()
+    private let ghostBorderWindow = GhostBorderWindow()
     private var dimWindows: [DimWindow] = []
     private var highlightVisible = false
     private var lastFrame: CGRect?
@@ -737,6 +738,9 @@ class FocusHighlighter {
         }
         if !frameIsDrawn && drawFrame {
             frameIsDrawn = true
+            // Leave a fading ghost on the outgoing window BEFORE showHighlight
+            // overwrites the remembered outgoing position.
+            maybeShowFocusTrail(focusChanged: focusChanged, newFrame: cocoaFrame)
             showHighlight(at: cocoaFrame)
             // The pulse animates the border, which spotlight mode replaces.
             if focusChanged && UserDefaults.standard.bool(forKey: Key.focusPulse),
@@ -744,6 +748,25 @@ class FocusHighlighter {
                 highlightWindow.pulse()
             }
         }
+    }
+
+    // On a focus change, fly a fading copy of the border in from where it was,
+    // showing the *direction* focus came from. Opt-in, and only when a border
+    // was actually on screen to leave a ghost of.
+    private func maybeShowFocusTrail(focusChanged: Bool, newFrame: CGRect) {
+        guard focusChanged,
+              highlightVisible,           // a border/dim was actually up (showHighlight hasn't run yet)
+              dragTimer == nil,
+              UserDefaults.standard.bool(forKey: Key.focusTrail),
+              UserDefaults.standard.bool(forKey: Key.animateMovement) else { return }
+        // The outgoing on-screen position — border frame, or the spotlight
+        // cut-out when spotlight mode replaces the border. hideHighlight keeps
+        // these across transient hides, so highlightVisible above guards against
+        // flying the ghost in from a stale phantom location.
+        let spotlight = UserDefaults.standard.bool(forKey: Key.spotlightMode)
+        guard let outgoing = spotlight ? displayedCutout : displayedBorderFrame,
+              outgoing != newFrame else { return }
+        ghostBorderWindow.flash(at: outgoing, reduceMotion: Self.reduceMotion)
     }
 
     // MARK: - Showing and hiding

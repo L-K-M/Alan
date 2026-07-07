@@ -43,6 +43,7 @@ class PrefsWindowController: NSWindowController {
     private let shortcutRecorder = ShortcutRecorderButton()
     private let shakeToFindCheckbox = NSButton(checkboxWithTitle: "Shake mouse to find window", target: nil, action: nil)
     private let flashOnSpaceChangeCheckbox = NSButton(checkboxWithTitle: "Flash border when switching Spaces", target: nil, action: nil)
+    private let focusTrailCheckbox = NSButton(checkboxWithTitle: "Focus trail — fade a ghost border on the window you left", target: nil, action: nil)
     private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: "Launch Alan at login", target: nil, action: nil)
 
     // MARK: - Excluded-apps tab controls
@@ -243,6 +244,7 @@ class PrefsWindowController: NSWindowController {
         setUp(findMyWindowCheckbox, action: #selector(findMyWindowHotkeyChanged(_:)))
         setUp(shakeToFindCheckbox, action: #selector(shakeToFindChanged(_:)))
         setUp(flashOnSpaceChangeCheckbox, action: #selector(flashOnSpaceChangeChanged(_:)))
+        setUp(focusTrailCheckbox, action: #selector(focusTrailChanged(_:)))
         setUp(launchAtLoginCheckbox, action: #selector(launchAtLoginChanged(_:)))
 
         glideDurationSlider.translatesAutoresizingMaskIntoConstraints = false
@@ -294,6 +296,7 @@ class PrefsWindowController: NSWindowController {
             shortcutRow,
             shakeToFindCheckbox,
             flashOnSpaceChangeCheckbox,
+            focusTrailCheckbox,
             divider,
             launchAtLoginCheckbox
         ])
@@ -473,6 +476,7 @@ class PrefsWindowController: NSWindowController {
         findMyWindowCheckbox.state = defaults.bool(forKey: Key.findMyWindowHotkey) ? .on : .off
         shakeToFindCheckbox.state = defaults.bool(forKey: Key.shakeToFind) ? .on : .off
         flashOnSpaceChangeCheckbox.state = defaults.bool(forKey: Key.flashOnSpaceChange) ? .on : .off
+        focusTrailCheckbox.state = defaults.bool(forKey: Key.focusTrail) ? .on : .off
         perAppColorsCheckbox.state = defaults.bool(forKey: Key.perAppColors) ? .on : .off
         if let styleIndex = BorderStyle.allCases.firstIndex(of: BorderStyle.current) {
             borderStylePopUp.selectItem(at: styleIndex)
@@ -589,6 +593,10 @@ class PrefsWindowController: NSWindowController {
 
     @objc func flashOnSpaceChangeChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.flashOnSpaceChange)
+    }
+
+    @objc func focusTrailChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.focusTrail)
     }
 
     @objc func launchAtLoginChanged(_ sender: NSButton) {
