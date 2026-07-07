@@ -50,14 +50,14 @@ can't merge-conflict with any other branch.
 
 | PR | Branch | Entry |
 |---|---|---|
-| — | `claude/perf-drag-fastpath` | PERF-6 |
-| — | `claude/visual-preview-room` | VIS-6 |
-| — | `claude/visual-shadow-direction` | VIS-7 |
-| — | `claude/idea-warp-cursor` | IDEA-8 |
-| — | `claude/idea-sonar-ping` | IDEA-4 |
-| — | `claude/idea-focus-chip` | IDEA-9 |
-| — | `claude/update-check` | FEAT-2 |
-| — | `claude/update-grant-guidance` | UX-6 |
+| #64 | `claude/perf-drag-fastpath` | PERF-6 |
+| #63 | `claude/visual-preview-room` | VIS-6 |
+| #62 | `claude/visual-shadow-direction` | VIS-7 |
+| #65 | `claude/idea-warp-cursor` | IDEA-8 |
+| #66 | `claude/idea-sonar-ping` | IDEA-4 |
+| #67 | `claude/idea-focus-chip` | IDEA-9 |
+| #68 | `claude/update-check` | FEAT-2 |
+| #69 | `claude/update-grant-guidance` | UX-6 |
 
 Where several branches touch `FocusHighlighter.swift`,
 `PrefsWindowController.swift`, or `Constants.swift`, they were kept to disjoint
@@ -180,9 +180,9 @@ and `lastFocusedWindow` is non-nil and its `axFrame(of:)` reads, use
 `currentFocusedWindow()`. A window-closed nil or a stalled read (which sets
 `lastResolutionTimedOut`) falls back; the mouse-up `refresh()` re-syncs.
 Everything downstream is untouched.
-**Resolution:** ✅ Implemented → `claude/perf-drag-fastpath`. Deferred last
-pass only to avoid a merge conflict with the headline fix's resolution region;
-now that PR #46 is merged, it lands cleanly.
+**Resolution:** ✅ Implemented → `claude/perf-drag-fastpath` (PR #64). Deferred
+last pass only to avoid a merge conflict with the headline fix's resolution
+region; now that PR #46 is merged, it lands cleanly.
 
 ### PERF-7 · `forceUpdate()` does an AX round-trip on every defaults change
 *sev low / conf medium · carried from round two*
@@ -282,9 +282,9 @@ squared-off halo the user won't actually see.
 layer-backed view can only paint into its bounds-sized backing store, so the
 halo clips regardless; that flag only controls the 6pt corner rounding. Only
 enlarging the room eliminates the clip.
-**Resolution:** ✅ Implemented → `claude/visual-preview-room`. A pure layout
-change (taller preview + more vertical room around the mock window); no behavior
-change. Faint clip, but the fix is safe and cheap.
+**Resolution:** ✅ Implemented → `claude/visual-preview-room` (PR #63). A pure
+layout change (taller preview + more vertical room around the mock window); no
+behavior change. Faint clip, but the fix is safe and cheap.
 
 ### VIS-7 · Stronger shadow drops the wrong way (flipped view) vs the preview
 *sev low / conf low / [dev]*
@@ -298,7 +298,7 @@ drops it downward. The two sites cast on opposite sides; the 3pt offset under a
 **Fix:** Derive the sign from the context —
 `let flipped = NSGraphicsContext.current?.isFlipped ?? false; shadow.shadowOffset = NSSize(width: 0, height: flipped ? 3 : -3)` —
 so both cast a natural downward drop. Leave the glow (offset 0,0) alone.
-**Resolution:** ✅ Implemented → `claude/visual-shadow-direction`. The
+**Resolution:** ✅ Implemented → `claude/visual-shadow-direction` (PR #62). The
 context-sign fix is logically sound (a drop shadow should fall downward on
 screen in both the flipped overlay and the unflipped preview); the exact
 perceptual result is still worth a glance on device, but a downward drop is the
@@ -325,11 +325,11 @@ true); if trust is currently false but the flag is true, branch the permission
 alert's `informativeText` to an update-specific message ("A recent update may
 have reset Alan's Accessibility permission…"). Flag transitions false→true only;
 wording change only, no behavior change.
-**Resolution:** ✅ Implemented → `claude/update-grant-guidance`. The docs half
-is device-independent; the runtime half is a defaults flag plus alert wording,
-low-risk. The underlying TCC-vs-signature behavior still ultimately wants a
-device to confirm, but the guidance is correct regardless and does no harm if
-the reset never happens.
+**Resolution:** ✅ Implemented → `claude/update-grant-guidance` (PR #69). The
+docs half is device-independent; the runtime half is a defaults flag
+(`Key.hadAccessibilityGrant`) plus alert wording, low-risk. The underlying
+TCC-vs-signature behavior still ultimately wants a device to confirm, but the
+guidance is correct regardless and does no harm if the reset never happens.
 
 ### UX-7 · No test target despite pure, permission-free seams
 *sev low / conf high*
@@ -400,12 +400,12 @@ Ship the **manual** "Check for Updates…" status-menu item first (bypasses any
 gate, gives explicit "up to date" feedback). Optional automatic weekly check
 (gated on a `lastUpdateCheck` date, a `skippedVersion`, and an opt-in preference
 defaulting off) can follow.
-**Resolution:** ✅ Implemented → `claude/update-check` — the manual "Check for
-Updates…" status-menu item, backed by a dependency-free `UpdateChecker` (new
-file) with a component-wise numeric version compare and silent failure. The
-optional automatic weekly check is left as a documented follow-up. Network
-behavior can't be exercised off-device, but the check is user-initiated and
-fails silently, so the downside is bounded.
+**Resolution:** ✅ Implemented → `claude/update-check` (PR #68) — the manual
+"Check for Updates…" status-menu item, backed by a dependency-free
+`UpdateChecker` (new file) with a component-wise numeric version compare and
+silent failure. The optional automatic weekly check is left as a documented
+follow-up. Network behavior can't be exercised off-device, but the check is
+user-initiated and fails silently, so the downside is bounded.
 
 ---
 
@@ -427,11 +427,11 @@ content view draws N concentric rounded-rects at `radius = progress * maxReach`,
 fires). Shared by the hotkey, shake, and Space-change flash (all route through
 `flashBorder`). Under Reduce Motion, a single static ring held briefly. Guard
 overlapping pings with an internal generation counter (like `GhostBorderWindow`).
-**Resolution:** ✅ Implemented → `claude/idea-sonar-ping`. `PingWindow` ships as
-a new file (no pbxproj edit, no merge surface); `flashBorder` gets a small
-early-return branch when `findAnimation == .ping`, plus a Behavior-tab picker
-(Flash / Sonar ping). Follows the proven `GhostBorderWindow` window/generation/
-fade pattern.
+**Resolution:** ✅ Implemented → `claude/idea-sonar-ping` (PR #66). `PingWindow`
+ships as a new file (no pbxproj edit, no merge surface); `flashBorder` gets a
+small early-return branch when `findAnimation == .ping`, plus a Behavior-tab
+picker (Flash / Sonar ping). Follows the proven `GhostBorderWindow` window/
+generation/fade pattern.
 
 ### IDEA-5 · Spotlight and border at the same time
 *sev low / conf high / [dev]*
@@ -494,10 +494,10 @@ global Quartz space, shared with `CGWarpMouseCursorPosition`),
 cocoa flip would land the cursor mirrored. Wires up the hotkey, shake, and
 Space-change gestures at once. Add a checkbox. Verify on a secondary/
 negative-origin display.
-**Resolution:** ✅ Implemented → `claude/idea-warp-cursor`. Deferred last pass
-only to avoid colliding with the (now-merged) `flashBorder` frame-live fix;
-opt-in and default off, so even an odd multi-display warp is harmless until the
-user enables it. Uses a dedicated `currentFocusAXFrame()` helper so the warp
+**Resolution:** ✅ Implemented → `claude/idea-warp-cursor` (PR #65). Deferred
+last pass only to avoid colliding with the (now-merged) `flashBorder` frame-live
+fix; opt-in and default off, so even an odd multi-display warp is harmless until
+the user enables it. Uses a dedicated `currentFocusAXFrame()` helper so the warp
 reads the unflipped AX frame.
 
 ### IDEA-9 · Transient "who has focus" chip (app icon + name)
@@ -518,11 +518,11 @@ back to `frontmostApplication` when the element is nil, e.g. the raw-bounds
 panel); position centered above `cocoaFrame`, clamped into the screen's
 `visibleFrame` (flip below if no room). Reuse one instance; hide it in
 `hideHighlight`/paused.
-**Resolution:** ✅ Implemented → `claude/idea-focus-chip`. `FocusChipWindow`
-ships as a new file (built on the proven generation/fade pattern); the
-`refresh()` hook is a single call in the focusChanged block plus a helper.
-Layout kept deliberately robust (fixed height, width from the label's fitting
-size, conservative screen-clamping) since it can't be visually verified
+**Resolution:** ✅ Implemented → `claude/idea-focus-chip` (PR #67).
+`FocusChipWindow` ships as a new file (built on the proven generation/fade
+pattern); the `refresh()` hook is a single call in the focusChanged block plus a
+helper. Layout kept deliberately robust (fixed height, width from the label's
+fitting size, conservative screen-clamping) since it can't be visually verified
 off-device; opt-in and default off, so any positioning nit is bounded.
 
 ### IDEA-10 · Squash-and-stretch the border as it glides
