@@ -731,7 +731,22 @@ class FocusHighlighter {
         }
 
         lastResolutionTimedOut = false
-        guard let (windowElement, axFrame) = currentFocusedWindow() else {
+        // Drag fast-path: while a window is being dragged its focus can't change
+        // (you're holding its title bar), so skip the full ~3-IPC re-derivation
+        // and just re-read the known window's frame. currentFocusedWindow()
+        // already skips the z-order snapshot mid-drag, but still resolves the
+        // element from scratch (AXFocusedUIElement → AXWindow, plus an AXFrame)
+        // every 30 Hz tick — ~90 IPC/s where one AXFrame read per tick would do.
+        // A closed window (nil frame) or a stalled read (which sets
+        // lastResolutionTimedOut) falls through to full resolution, and the
+        // mouse-up refresh re-syncs focus regardless.
+        let resolved: (element: AXUIElement?, frame: CGRect)?
+        if dragTimer != nil, let dragged = lastFocusedWindow, let frame = axFrame(of: dragged) {
+            resolved = (dragged, frame)
+        } else {
+            resolved = currentFocusedWindow()
+        }
+        guard let (windowElement, axFrame) = resolved else {
             if lastResolutionTimedOut {
                 // A transient AX stall (a busy or mid-operation frontmost app),
                 // not a genuine "no focused window". Keep whatever border is up
