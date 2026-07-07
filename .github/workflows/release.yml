@@ -29,6 +29,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pin the toolchain so a macos-26 image refresh that changes the default
+      # Xcode (or ships a beta as default) can't silently alter a release
+      # build. latest-stable is deterministic across refreshes and fails loudly
+      # if no stable Xcode is present; swap in an explicit version (e.g.
+      # '26.0.1', verified against the runner image manifest) for a hard pin.
+      # Keep this identical to ci.yml so CI and Release build the same way.
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
       - name: Determine version
         id: version
         env:
