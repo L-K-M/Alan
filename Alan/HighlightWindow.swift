@@ -47,6 +47,10 @@ class HighlightWindow: NSWindow {
         var margin: CGFloat = 25
         if UserDefaults.standard.bool(forKey: Key.glowingBorder) { margin += 15 }
         if UserDefaults.standard.bool(forKey: Key.strongerShadow) { margin += 30 }
+        // The contrast casing strokes ~1.5 pt wider than the border, which at
+        // the extreme (max width × pulse peak) would otherwise clip against the
+        // 25 pt base. Only grow the backing store when the casing is active.
+        if HighlightView.contrastCasingActive { margin += 2 }
         return margin
     }
 
@@ -165,6 +169,15 @@ class HighlightView: NSView {
 
     // Stroke width multiplier, animated by HighlightWindow.pulse().
     var pulseScale: CGFloat = 1
+
+    // Whether to draw the contrasting under-stroke: on when the user opts in
+    // via Key.contrastCasing, or automatically whenever the system Increase
+    // Contrast accessibility setting is on. Kept off at factory settings so the
+    // default border look is unchanged.
+    static var contrastCasingActive: Bool {
+        UserDefaults.standard.bool(forKey: Key.contrastCasing)
+            || NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+    }
 
     // The stroke color depends on the current appearance, so the border must be
     // redrawn when the system switches between light and dark mode.
@@ -285,6 +298,27 @@ class HighlightView: NSView {
 
             color.setStroke()
             path.stroke()
+            NSGraphicsContext.current?.restoreGraphicsState()
+        }
+
+        // Contrast casing: a wider under-stroke in the perceptual opposite, so
+        // the border stays visible even when its color matches the content
+        // behind it — and a live response to the Increase Contrast accessibility
+        // setting. Drawn after the stronger-shadow pass (so it isn't caught by
+        // that pass's clip/shadow) and before the visible stroke below (so it
+        // sits underneath, leaving a thin contrasting halo on both edges). Off
+        // by factory default: the exact look is unchanged unless Increase
+        // Contrast is on or Key.contrastCasing is set.
+        if HighlightView.contrastCasingActive {
+            NSGraphicsContext.current?.saveGraphicsState()
+            let increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            let casingWidth: CGFloat = increaseContrast ? 3 : 2
+            let casingAlpha: CGFloat = increaseContrast ? 0.85 : 0.45
+            // Copy the path so it keeps the border's dash/cap but strokes wider.
+            let casingPath = path.copy() as! NSBezierPath
+            casingPath.lineWidth = effectiveWidth + casingWidth
+            NSColor(white: color.perceptualLuminance() > 0.5 ? 0 : 1, alpha: casingAlpha).setStroke()
+            casingPath.stroke()
             NSGraphicsContext.current?.restoreGraphicsState()
         }
 

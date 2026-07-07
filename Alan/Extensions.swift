@@ -8,6 +8,16 @@
 import AppKit
 
 extension NSColor {
+    // Relative luminance in [0, 1] from the sRGB components (Rec. 709 weights).
+    // The usingColorSpace conversion is required: the border color can be a
+    // party-mode HSB color or a dynamic catalog color (the light/dark defaults
+    // are NSColor.black/.white), and reading redComponent on one of those
+    // directly would trap. Used to pick a contrasting casing color.
+    func perceptualLuminance() -> CGFloat {
+        guard let c = usingColorSpace(.sRGB) else { return 0.5 }
+        return 0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent
+    }
+
     // A color derived from the app's bundle identifier, stable across
     // launches (String.hashValue is randomized per process, so a classic
     // djb2 hash picks the hue instead). Terminal is always Terminal-colored.
