@@ -48,6 +48,7 @@ class PrefsWindowController: NSWindowController {
     private let warpCursorOnFindCheckbox = NSButton(checkboxWithTitle: "Move the pointer to the window when finding it", target: nil, action: nil)
     private let showInScreenshotsCheckbox = NSButton(checkboxWithTitle: "Show overlays in screenshots and recordings", target: nil, action: nil)
     private let focusTrailCheckbox = NSButton(checkboxWithTitle: "Focus trail — fade a ghost border on the window you left", target: nil, action: nil)
+    private let showFocusChipCheckbox = NSButton(checkboxWithTitle: "Show a chip (app icon + name) on focus change", target: nil, action: nil)
     private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: "Launch Alan at login", target: nil, action: nil)
 
     // MARK: - Excluded-apps tab controls
@@ -256,6 +257,7 @@ class PrefsWindowController: NSWindowController {
         setUp(warpCursorOnFindCheckbox, action: #selector(warpCursorOnFindChanged(_:)))
         setUp(showInScreenshotsCheckbox, action: #selector(showInScreenshotsChanged(_:)))
         setUp(focusTrailCheckbox, action: #selector(focusTrailChanged(_:)))
+        setUp(showFocusChipCheckbox, action: #selector(showFocusChipChanged(_:)))
         setUp(launchAtLoginCheckbox, action: #selector(launchAtLoginChanged(_:)))
 
         glideDurationSlider.translatesAutoresizingMaskIntoConstraints = false
@@ -318,6 +320,7 @@ class PrefsWindowController: NSWindowController {
             warpCursorOnFindCheckbox,
             showInScreenshotsCheckbox,
             focusTrailCheckbox,
+            showFocusChipCheckbox,
             divider,
             launchAtLoginCheckbox
         ])
@@ -500,6 +503,7 @@ class PrefsWindowController: NSWindowController {
         warpCursorOnFindCheckbox.state = defaults.bool(forKey: Key.warpCursorOnFind) ? .on : .off
         showInScreenshotsCheckbox.state = defaults.bool(forKey: Key.showInScreenshots) ? .on : .off
         focusTrailCheckbox.state = defaults.bool(forKey: Key.focusTrail) ? .on : .off
+        showFocusChipCheckbox.state = defaults.bool(forKey: Key.showFocusChip) ? .on : .off
         perAppColorsCheckbox.state = defaults.bool(forKey: Key.perAppColors) ? .on : .off
         useAccentColorCheckbox.state = defaults.bool(forKey: Key.useAccentColor) ? .on : .off
         // The light/dark wells become silent no-ops while the accent color is
@@ -648,6 +652,10 @@ class PrefsWindowController: NSWindowController {
 
     @objc func focusTrailChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.focusTrail)
+    }
+
+    @objc func showFocusChipChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.showFocusChip)
     }
 
     @objc func launchAtLoginChanged(_ sender: NSButton) {
