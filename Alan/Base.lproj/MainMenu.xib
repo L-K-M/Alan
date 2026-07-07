@@ -25,7 +25,7 @@
                                 </connections>
                             </menuItem>
                             <menuItem isSeparatorItem="YES" id="VOq-y0-SEH"/>
-                            <menuItem title="Preferences…" keyEquivalent="," id="BOF-NM-1cW">
+                            <menuItem title="Settings…" keyEquivalent="," id="BOF-NM-1cW">
                                 <connections>
                                     <action selector="showPrefs:" target="Voe-Tx-rLC" id="mm-prefs-act"/>
                                 </connections>
@@ -52,6 +52,18 @@
                             <menuItem title="Quit Alan" keyEquivalent="q" id="mm-quit">
                                 <connections>
                                     <action selector="terminate:" target="-1" id="mm-quit-act"/>
+                                </connections>
+                            </menuItem>
+                        </items>
+                    </menu>
+                </menuItem>
+                <menuItem title="File" id="mm-file">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <menu key="submenu" title="File" id="mm-file-menu">
+                        <items>
+                            <menuItem title="Close" keyEquivalent="w" id="mm-close">
+                                <connections>
+                                    <action selector="performClose:" target="-1" id="mm-close-act"/>
                                 </connections>
                             </menuItem>
                         </items>
