@@ -84,6 +84,7 @@ class FocusHighlighter {
     private var screenObserver: NSObjectProtocol?
     private var spaceObserver: NSObjectProtocol?
     private var appearanceObservation: NSKeyValueObservation?
+    private var systemColorsObserver: NSObjectProtocol?
     private var dragMonitor: Any?
     private var dragTimer: Timer?
     // Ticks of drag polling that saw no window movement; once enough pile
@@ -161,6 +162,20 @@ class FocusHighlighter {
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            self?.forceUpdate()
+        }
+
+        // An accent-color change (System Settings → Appearance → Accent colour)
+        // does not fire the effectiveAppearance KVO above — that only covers
+        // the light/dark switch — so the accent-colored border would otherwise
+        // keep the old hue until a window moved. Repaint on it, but only while
+        // the accent color is actually the source, to avoid needless churn.
+        systemColorsObserver = NotificationCenter.default.addObserver(
+            forName: NSColor.systemColorsDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard UserDefaults.standard.bool(forKey: Key.useAccentColor) else { return }
             self?.forceUpdate()
         }
 
