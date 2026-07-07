@@ -36,6 +36,8 @@ struct Defaults {
     // moved away from — long enough to read the direction, short enough not to
     // clutter.
     static let ghostTrailDuration: TimeInterval = 0.8
+    // How long the sonar-ping find animation takes to expand and fade.
+    static let findPingDuration: TimeInterval = 0.55
     // kVK_ANSI_F with controlKey | optionKey | cmdKey — spelled as numbers
     // so Constants doesn't need Carbon.
     static let findMyWindowDefaultKeyCode = 0x03
@@ -78,6 +80,9 @@ struct Key {
     // one-shot action, so there's nothing to apply on toggle — hence it's absent
     // from allObservedKeys below.
     static let warpCursorOnFind = "warpCursorOnFind"
+    // Read live when a find gesture fires (not observed): it changes nothing
+    // until the next flash/ping, so it's absent from allObservedKeys below.
+    static let findAnimation = "findAnimation"
 
     // Every key the highlighter reacts to. FocusHighlighter installs a KVO
     // observer per key so that external writes — `defaults write` from
@@ -117,5 +122,27 @@ enum BorderStyle: String, CaseIterable {
 
     static var current: BorderStyle {
         BorderStyle(rawValue: UserDefaults.standard.string(forKey: Key.borderStyle) ?? "") ?? .solid
+    }
+}
+
+// How a "find my window" gesture is shown. The classic border strobe fails at
+// exactly the moment it's needed — when the border is hard to see — so an
+// expanding sonar ping, which points at the window's *location* independent of
+// the border's own color/contrast, is offered as an alternative. Raw values are
+// the stored defaults strings.
+enum FindAnimation: String, CaseIterable {
+    case flash
+    case ping
+
+    // Menu-facing labels, in the order shown in the popup.
+    var label: String {
+        switch self {
+        case .flash: return "Flash the border"
+        case .ping: return "Sonar ping"
+        }
+    }
+
+    static var current: FindAnimation {
+        FindAnimation(rawValue: UserDefaults.standard.string(forKey: Key.findAnimation) ?? "") ?? .flash
     }
 }

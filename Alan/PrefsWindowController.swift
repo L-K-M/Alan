@@ -42,6 +42,7 @@ class PrefsWindowController: NSWindowController {
     private let dimLevelLabel = NSTextField(labelWithString: "45%")
     private let findMyWindowCheckbox = NSButton(checkboxWithTitle: "“Find my window” hotkey — flashes the border", target: nil, action: nil)
     private let shortcutRecorder = ShortcutRecorderButton()
+    private let findAnimationPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     private let shakeToFindCheckbox = NSButton(checkboxWithTitle: "Shake mouse to find window", target: nil, action: nil)
     private let flashOnSpaceChangeCheckbox = NSButton(checkboxWithTitle: "Flash border when switching Spaces", target: nil, action: nil)
     private let warpCursorOnFindCheckbox = NSButton(checkboxWithTitle: "Move the pointer to the window when finding it", target: nil, action: nil)
@@ -291,6 +292,13 @@ class PrefsWindowController: NSWindowController {
             shortcutRecorder.widthAnchor.constraint(greaterThanOrEqualToConstant: 130)
         ])
 
+        // How every find gesture (hotkey, shake, Space-change flash) is shown.
+        findAnimationPopUp.translatesAutoresizingMaskIntoConstraints = false
+        findAnimationPopUp.addItems(withTitles: FindAnimation.allCases.map(\.label))
+        findAnimationPopUp.target = self
+        findAnimationPopUp.action = #selector(findAnimationChanged(_:))
+        let findAnimationRow = indentedRow([makeLabel("Find shows:"), findAnimationPopUp])
+
         let divider = NSBox()
         divider.boxType = .separator
 
@@ -304,6 +312,7 @@ class PrefsWindowController: NSWindowController {
             dimRow,
             findMyWindowCheckbox,
             shortcutRow,
+            findAnimationRow,
             shakeToFindCheckbox,
             flashOnSpaceChangeCheckbox,
             warpCursorOnFindCheckbox,
@@ -537,6 +546,10 @@ class PrefsWindowController: NSWindowController {
         shortcutRecorder.registrationFailed = FocusHighlighter.shared.hotkeyRegistrationFailed
         shortcutRecorder.refreshTitle()
 
+        if let findIndex = FindAnimation.allCases.firstIndex(of: FindAnimation.current) {
+            findAnimationPopUp.selectItem(at: findIndex)
+        }
+
         // The status menu's "Exclude <app>" writes to defaults directly. If
         // this window is open at the time, the private copy must follow —
         // otherwise the table shows a stale list and, worse, the next Remove
@@ -610,6 +623,11 @@ class PrefsWindowController: NSWindowController {
     @objc func borderStyleChanged(_ sender: NSPopUpButton) {
         let index = max(0, min(BorderStyle.allCases.count - 1, sender.indexOfSelectedItem))
         UserDefaults.standard.set(BorderStyle.allCases[index].rawValue, forKey: Key.borderStyle)
+    }
+
+    @objc func findAnimationChanged(_ sender: NSPopUpButton) {
+        let index = max(0, min(FindAnimation.allCases.count - 1, sender.indexOfSelectedItem))
+        UserDefaults.standard.set(FindAnimation.allCases[index].rawValue, forKey: Key.findAnimation)
     }
 
     @objc func shakeToFindChanged(_ sender: NSButton) {
