@@ -74,6 +74,10 @@ struct Key {
     static let showInScreenshots = "showInScreenshots"
     static let contrastCasing = "contrastCasing"
     static let focusTrail = "focusTrail"
+    // Read live when a find gesture fires, not observed: warping the cursor is a
+    // one-shot action, so there's nothing to apply on toggle — hence it's absent
+    // from allObservedKeys below.
+    static let warpCursorOnFind = "warpCursorOnFind"
 
     // Every key the highlighter reacts to. FocusHighlighter installs a KVO
     // observer per key so that external writes — `defaults write` from
