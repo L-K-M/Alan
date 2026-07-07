@@ -753,25 +753,65 @@ final class DeletableTableView: NSTableView {
 final class BorderPreviewView: NSView {
 
     private var redrawTimer: Timer?
+    private var occlusionObserver: NSObjectProtocol?
 
     // Party mode cycles and per-app colors change without defaults
-    // notifications, so just repaint while the preview is on screen.
+    // notifications, so the preview repaints on a timer while it's on screen.
+    // The timer is *started and stopped* by the window's occlusion state, not
+    // left running with an isVisible guard in its body: the Settings window is
+    // isReleasedWhenClosed = false and only ordered out on close, so this view
+    // stays installed, `window` never returns to nil, viewDidMoveToWindow is
+    // never called again, and a body-guarded timer would keep waking the
+    // process 30×/s forever after Settings is opened once. Occlusion covers
+    // close (loses .visible), reopen (gains it), and miniaturize.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        redrawTimer?.invalidate()
-        redrawTimer = nil
-        guard window != nil else { return }
 
+        if let occlusionObserver {
+            NotificationCenter.default.removeObserver(occlusionObserver)
+            self.occlusionObserver = nil
+        }
+
+        guard let window else {
+            stopRedrawTimer()
+            return
+        }
+
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] note in
+            guard let self, let changed = note.object as? NSWindow else { return }
+            self.updateRedrawTimer(visible: changed.occlusionState.contains(.visible))
+        }
+        updateRedrawTimer(visible: window.occlusionState.contains(.visible))
+    }
+
+    private func updateRedrawTimer(visible: Bool) {
+        visible ? startRedrawTimer() : stopRedrawTimer()
+    }
+
+    private func startRedrawTimer() {
+        guard redrawTimer == nil else { return }
         let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
-            // The view stays installed in the (ordered-out) window after it's
-            // closed, so this timer would otherwise wake the process 30×/s
-            // forever. Only repaint while the window is actually on screen.
-            guard let self, self.window?.isVisible == true else { return }
-            self.needsDisplay = true
+            self?.needsDisplay = true
         }
         timer.tolerance = (1.0 / 30.0) * 0.1
         RunLoop.current.add(timer, forMode: .common)
         redrawTimer = timer
+    }
+
+    private func stopRedrawTimer() {
+        redrawTimer?.invalidate()
+        redrawTimer = nil
+    }
+
+    deinit {
+        if let occlusionObserver {
+            NotificationCenter.default.removeObserver(occlusionObserver)
+        }
+        redrawTimer?.invalidate()
     }
 
     override func draw(_ dirtyRect: NSRect) {
