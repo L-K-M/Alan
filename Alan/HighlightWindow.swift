@@ -93,6 +93,9 @@ class HighlightWindow: NSWindow {
     // MARK: - Animated border styles
 
     private var styleAnimationTimer: Timer?
+    // The last wobble seed we actually repainted for, so hand-drawn ticks that
+    // wouldn't change the sketch can skip the redraw.
+    private var lastAnimatedSeed: Int?
 
     // Marching ants and the hand-drawn wobble derive their phase/seed from the
     // wall clock at draw time (like party mode), so the timer just keeps the
@@ -101,7 +104,20 @@ class HighlightWindow: NSWindow {
         if enabled {
             guard styleAnimationTimer == nil else { return }
             let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
-                self?.contentView?.needsDisplay = true
+                guard let self else { return }
+                // Marching ants advances its dash phase every tick, so it needs
+                // every redraw. The hand-drawn wobble only re-seeds ~3×/s
+                // (Int(time * 3)), so 27 of every 30 ticks would regenerate a
+                // pixel-identical path and re-stroke it (plus the CPU Gaussian
+                // passes if glow/shadow are on). Gate its invalidation on the
+                // seed actually changing; keep the 30 Hz timer so a seed change
+                // is still observed within ~33 ms.
+                if BorderStyle.current == .handDrawn {
+                    let seed = HighlightView.currentWobbleSeed()
+                    guard seed != self.lastAnimatedSeed else { return }
+                    self.lastAnimatedSeed = seed
+                }
+                self.contentView?.needsDisplay = true
             }
             timer.tolerance = (1.0 / 30.0) * 0.1
             RunLoop.current.add(timer, forMode: .common)
@@ -109,6 +125,7 @@ class HighlightWindow: NSWindow {
         } else {
             styleAnimationTimer?.invalidate()
             styleAnimationTimer = nil
+            lastAnimatedSeed = nil
         }
     }
 
@@ -226,9 +243,9 @@ class HighlightView: NSView {
         let path: NSBezierPath
         if style == .handDrawn {
             // Re-seed a few times a second for the wobble; a fixed seed under
-            // Reduce Motion renders a static hand-drawn look.
-            let seed = reduceMotion ? 0 : Int(Date().timeIntervalSinceReferenceDate * 3)
-            path = wobblePath(around: borderBounds, seed: seed)
+            // Reduce Motion renders a static hand-drawn look. Shared with the
+            // animation timer so it can skip redraws between seed changes.
+            path = wobblePath(around: borderBounds, seed: HighlightView.currentWobbleSeed())
         } else if cornerRadius > 0 {
             path = NSBezierPath(roundedRect: borderBounds, xRadius: CGFloat(cornerRadius), yRadius: CGFloat(cornerRadius))
         } else {
@@ -312,6 +329,15 @@ class HighlightView: NSView {
     }
 
     // MARK: - Hand-drawn wobble
+
+    // The wobble's animation seed, re-derived a few times a second from the
+    // wall clock (a fixed 0 under Reduce Motion → a static sketch). Shared by
+    // the draw path and the animation timer so the timer can skip a redraw
+    // whenever the seed hasn't advanced.
+    static func currentWobbleSeed() -> Int {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return 0 }
+        return Int(Date().timeIntervalSinceReferenceDate * 3)
+    }
 
     // A closed path tracing the rect with each sampled point nudged by
     // deterministic per-point noise — an xkcd-style hand-drawn wobble.
