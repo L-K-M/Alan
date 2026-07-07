@@ -42,6 +42,11 @@ class FocusHighlighter {
     // Re-refresh shortly after an AX notification, since a just-created
     // window's AX tree (main status, final frame) can settle a beat later.
     private var settleRefreshTimer: Timer?
+    // Remaining settle-refresh attempts. A brand-new window (a copy-progress
+    // panel) can be created *before* the window server lists it as topmost, so
+    // one 0.25 s retry isn't always enough — this drives a short back-off chain
+    // that re-arms while attempts remain and self-terminates when they run out.
+    private var settleRefreshRemaining = 0
 
     private var flashTimer: Timer?
     private var flashCount = 0
@@ -425,17 +430,30 @@ class FocusHighlighter {
     private func handleAXNotification() {
         refresh()
         // AXWindowCreated in particular fires before the new window has fully
-        // settled (become main, taken its final frame), so the synchronous
-        // refresh above can sample stale state. A coalesced re-refresh a beat
-        // later catches the settled window.
+        // settled (become main, taken its final frame) *and* before the window
+        // server lists it as the topmost window, so the synchronous refresh
+        // above can sample stale state. Top the budget back up on every
+        // notification — a steady stream keeps retrying, and once notifications
+        // stop the chain counts down and terminates — then (re)arm the chain.
+        settleRefreshRemaining = 3
         scheduleSettleRefresh()
     }
 
+    // A short back-off chain of re-refreshes. A lone 0.25 s retry misses a
+    // panel that enters the z-order late (slow app, animated progress window);
+    // spreading ~3 attempts out to ~1 s catches it without ever polling — the
+    // chain stops the moment the budget hits zero, and AX posts no continuous
+    // notifications while idle to keep refilling it.
     private func scheduleSettleRefresh() {
-        guard settleRefreshTimer == nil else { return }
-        let timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
-            self?.settleRefreshTimer = nil
-            self?.refresh()
+        guard settleRefreshTimer == nil, settleRefreshRemaining > 0 else { return }
+        let delays = [0.12, 0.3, 0.6]
+        let delay = delays[min(3 - settleRefreshRemaining, delays.count - 1)]
+        let timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.settleRefreshTimer = nil
+            self.settleRefreshRemaining -= 1
+            self.refresh()
+            self.scheduleSettleRefresh()
         }
         RunLoop.current.add(timer, forMode: .common)
         settleRefreshTimer = timer
@@ -697,7 +715,7 @@ class FocusHighlighter {
         // visible on their Space to tell focus apart from. Split View tiles
         // also report AXFullScreen, so only windows that actually cover the
         // screen are skipped — tiled windows keep their border.
-        if isFullScreen(windowElement), windowFillsScreen(cocoaFrame) {
+        if let windowElement, isFullScreen(windowElement), windowFillsScreen(cocoaFrame) {
             if highlightVisible {
                 hideHighlight()
                 lastFrame = nil
@@ -1035,7 +1053,7 @@ class FocusHighlighter {
     // border to the wrong window. The window server's z-order knows better:
     // when neither the keyboard-focus window nor the main window matches the
     // topmost app-owned window, resolve that window directly by frame.
-    private func currentFocusedWindow() -> (element: AXUIElement, frame: CGRect)? {
+    private func currentFocusedWindow() -> (element: AXUIElement?, frame: CGRect)? {
         let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
 
         // Keyboard-focus resolution: right in the common case, and the only
@@ -1082,6 +1100,18 @@ class FocusHighlighter {
                let frame = axFrame(of: topWindow) {
                 return (topWindow, frame)
             }
+
+            // AX can't *name* the frontmost window — it's a sheet reached
+            // through kAXSheetsAttribute rather than the app's window list, its
+            // AXFrame is off by more than the match tolerance, it's past the
+            // scan cap, or the AXFrame read just timed out. But the window
+            // server already told us exactly where it is. The border is a pure
+            // visual overlay: it needs a frame, not a handle. Draw at the
+            // topmost bounds directly rather than discarding them and falling
+            // back to the (provably-behind) keyboard-focus window. topBounds is
+            // already in AXFrame's top-left global space, so refresh()'s
+            // cocoaRect(fromAXRect:) converts it just like any other frame.
+            return (nil, topBounds)
         }
 
         // Fall back to the keyboard-focus resolution: floating palettes
@@ -1133,7 +1163,10 @@ class FocusHighlighter {
     // Find the app's AX window whose frame matches the given window-server
     // bounds — the resolution of last resort for a window that is neither
     // key nor main. Capped: the array read is one IPC but every AXFrame read
-    // is another, and a window-hoarder app shouldn't stall a refresh.
+    // is another, and a window-hoarder app shouldn't stall a refresh. The loop
+    // returns on the first match, so the cap only bounds how many windows are
+    // *examined*; 40 covers realistic window counts without letting a hoarder
+    // stall the refresh.
     private func appWindowMatching(_ bounds: CGRect, appElement: AXUIElement) -> AXUIElement? {
         var value: CFTypeRef?
         let err = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value)
@@ -1141,7 +1174,7 @@ class FocusHighlighter {
             lastResolutionTimedOut = true
         }
         guard err == .success, let windows = value as? [AXUIElement] else { return nil }
-        for window in windows.prefix(20) {
+        for window in windows.prefix(40) {
             if let frame = axFrame(of: window), framesRoughlyEqual(frame, bounds) {
                 return window
             }
@@ -1158,13 +1191,16 @@ class FocusHighlighter {
             return nil
         }
         // First reasonably-sized window owned by this app on a normal window
-        // layer. Menus, pop-ups, and status windows sit on higher layers and
-        // are skipped; floating tool panels (layer 3) are kept.
+        // layer. Floating tool panels (layer 3) and modal-panel-level windows
+        // (kCGModalPanelWindowLevel = 8) are kept — a frontmost dialog can sit
+        // at the latter. Menus, pop-ups, status items, the Dock, and the menu
+        // bar all sit higher (utility 19, Dock 20, mainMenu 24, statusBar 25,
+        // popUpMenu 101) and are skipped.
         for info in infoList {
             guard let ownerNumber = info[kCGWindowOwnerPID as String] as? NSNumber,
                   ownerNumber.int32Value == pid else { continue }
             let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0
-            guard layer >= 0, layer <= 3 else { continue }
+            guard layer >= 0, layer <= 8 else { continue }
             guard let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
                   let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary) else { continue }
             guard bounds.width > 40, bounds.height > 40 else { continue }
