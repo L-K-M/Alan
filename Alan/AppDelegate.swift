@@ -169,12 +169,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Returning to a Dock icon (.regular) needs an explicit activate for
         // the menu bar to take and the app not to drop behind others.
         if !hidden {
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.activate()
         }
     }
 
     @objc private func showAbout(_ sender: Any?) {
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         NSApp.orderFrontStandardAboutPanel(nil)
     }
 
@@ -224,7 +224,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // its next event — and a background app sitting behind System Settings
         // receives none, so the alert would never close on its own.
         let pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            if AXIsProcessTrusted() {
+            // Only abort when a modal session is actually running. Between
+            // runModal() iterations (the user clicked "Open System Settings",
+            // which re-opens the pane and pumps the run loop before we
+            // re-present) there is no session; firing abortModal there raises
+            // NSAbortModalException with nothing to catch it — a lost response
+            // or a crash under NSApplicationCrashOnExceptions. The while-loop
+            // below still exits on its own once trust is granted.
+            if AXIsProcessTrusted(), NSApp.modalWindow != nil {
                 NSApp.abortModal()
             }
         }
@@ -260,7 +267,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @IBAction func showPrefs(_ sender: AnyObject?) {
         // In accessory mode the app is never active, so the window would
         // otherwise appear behind whatever is frontmost.
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         prefsWindowController.showWindow(nil)
         prefsWindowController.window?.makeKeyAndOrderFront(nil)
     }
