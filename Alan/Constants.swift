@@ -36,6 +36,8 @@ struct Defaults {
     // moved away from — long enough to read the direction, short enough not to
     // clutter.
     static let ghostTrailDuration: TimeInterval = 0.8
+    // How long the "who has focus" chip lingers before fading out.
+    static let focusChipDuration: TimeInterval = 0.8
     // kVK_ANSI_F with controlKey | optionKey | cmdKey — spelled as numbers
     // so Constants doesn't need Carbon.
     static let findMyWindowDefaultKeyCode = 0x03
@@ -74,6 +76,7 @@ struct Key {
     static let showInScreenshots = "showInScreenshots"
     static let contrastCasing = "contrastCasing"
     static let focusTrail = "focusTrail"
+    static let showFocusChip = "showFocusChip"
 
     // Every key the highlighter reacts to. FocusHighlighter installs a KVO
     // observer per key so that external writes — `defaults write` from
@@ -88,7 +91,7 @@ struct Key {
         spotlightDimLevel, animateMovement, moveAnimationDuration,
         findMyWindowKeyCode, findMyWindowModifiers, shakeToFind,
         flashOnSpaceChange, paused, borderStyle, useAccentColor, showInScreenshots,
-        contrastCasing, focusTrail
+        contrastCasing, focusTrail, showFocusChip
     ]
 }
 

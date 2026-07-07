@@ -16,6 +16,7 @@ class FocusHighlighter {
     private let systemWideElement = AXUIElementCreateSystemWide()
     private let highlightWindow = HighlightWindow()
     private let ghostBorderWindow = GhostBorderWindow()
+    private let focusChipWindow = FocusChipWindow()
     private var dimWindows: [DimWindow] = []
     private var highlightVisible = false
     private var lastFrame: CGRect?
@@ -812,6 +813,7 @@ class FocusHighlighter {
             // overwrites the remembered outgoing position.
             maybeShowFocusTrail(focusChanged: focusChanged, newFrame: cocoaFrame)
             showHighlight(at: cocoaFrame)
+            maybeShowFocusChip(focusChanged: focusChanged, windowElement: windowElement, frame: cocoaFrame)
             // The pulse animates the border, which spotlight mode replaces.
             if focusChanged && UserDefaults.standard.bool(forKey: Key.focusPulse),
                !UserDefaults.standard.bool(forKey: Key.spotlightMode) {
@@ -837,6 +839,27 @@ class FocusHighlighter {
         guard let outgoing = spotlight ? displayedCutout : displayedBorderFrame,
               outgoing != newFrame else { return }
         ghostBorderWindow.flash(at: outgoing, reduceMotion: Self.reduceMotion)
+    }
+
+    // On a focus change, briefly float a chip naming the app that just took
+    // focus. Especially useful in spotlight mode, where the dim hides every
+    // other cue. Identity comes from the *resolved* window's owning pid when
+    // there is one (so an out-of-process open/save panel is named by its own
+    // app), falling back to the frontmost app for a raw-bounds panel with no
+    // element. Opt-in, and suppressed while dragging.
+    private func maybeShowFocusChip(focusChanged: Bool, windowElement: AXUIElement?, frame: CGRect) {
+        guard focusChanged,
+              dragTimer == nil,
+              UserDefaults.standard.bool(forKey: Key.showFocusChip) else { return }
+        let pid: pid_t? = windowElement.flatMap { element in
+            var p: pid_t = 0
+            return AXUIElementGetPid(element, &p) == .success && p > 0 ? p : nil
+        }
+        let app = pid.flatMap { NSRunningApplication(processIdentifier: $0) }
+            ?? NSWorkspace.shared.frontmostApplication
+        guard let app else { return }
+        let name = app.localizedName ?? app.bundleIdentifier ?? "Unknown"
+        focusChipWindow.show(icon: app.icon, name: name, above: frame)
     }
 
     // MARK: - Showing and hiding
@@ -888,6 +911,9 @@ class FocusHighlighter {
         highlightWindow.setBorderStyleAnimating(false)
         highlightWindow.orderOut(nil)
         hideDimWindows()
+        // A transient focus chip shouldn't outlive the border it accompanied
+        // (hide, pause, exclude, Space-change all route through here).
+        focusChipWindow.hide()
         highlightVisible = false
         spotlightAnimationTimer?.invalidate()
         spotlightAnimationTimer = nil
