@@ -940,7 +940,23 @@ final class ShortcutRecorderButton: NSButton {
             }
 
             let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
-            guard !flags.intersection([.command, .option, .control]).isEmpty else {
+
+            // Reserved menu/system combos would register fine and then swallow
+            // that keystroke everywhere — record ⌘C and the border flashes on
+            // every copy. Refuse them up front and keep recording for a retry.
+            if Self.isReserved(keyCode: Int(event.keyCode), flags: flags) {
+                NSSound.beep()
+                self.title = "Reserved by macOS"
+                self.toolTip = "That shortcut is used system-wide. Pick another."
+                return nil
+            }
+
+            // A modifier is required for letter keys — a bare-letter hotkey
+            // would shadow plain typing — but a bare function key (F1–F12) is a
+            // valid global hotkey (macOS itself binds F11), so let it through
+            // without one.
+            let isFunctionKey = Self.functionKeyCodes.contains(Int(event.keyCode))
+            guard isFunctionKey || !flags.intersection([.command, .option, .control]).isEmpty else {
                 NSSound.beep()
                 return nil
             }
@@ -965,6 +981,35 @@ final class ShortcutRecorderButton: NSButton {
         // one if the user cancelled).
         FocusHighlighter.shared.resumeHotkeyAfterRecording()
         refreshTitle()
+    }
+
+    // Function keys that may be recorded without a modifier. An explicit set,
+    // not a Range: kVK_F1…kVK_F12 are non-contiguous and descending
+    // (kVK_F1 = 122, kVK_F12 = 111, kVK_F5 = 96), so `kVK_F1...kVK_F12` would
+    // trap. F1–F12 only, matching what keyName(for:) already renders.
+    private static let functionKeyCodes: Set<Int> = [
+        kVK_F1, kVK_F2, kVK_F3, kVK_F4, kVK_F5, kVK_F6,
+        kVK_F7, kVK_F8, kVK_F9, kVK_F10, kVK_F11, kVK_F12
+    ]
+
+    // Menu/system key-equivalents that RegisterEventHotKey will happily claim
+    // and then swallow system-wide. A curated set, not exhaustive: combos the
+    // system itself reserves (⌘Space, ⌘Tab) already fail registration and
+    // surface via the recorder's existing "— in use" flag, so they're omitted.
+    // flags is the intersection of the four modifier bits, so exact `==` is
+    // precise.
+    private static func isReserved(keyCode: Int, flags: NSEvent.ModifierFlags) -> Bool {
+        if flags == [.command] {
+            switch keyCode {
+            case kVK_ANSI_Q, kVK_ANSI_W, kVK_ANSI_C, kVK_ANSI_V,
+                 kVK_ANSI_X, kVK_ANSI_A, kVK_ANSI_Z:
+                return true
+            default:
+                return false
+            }
+        }
+        if flags == [.command, .shift], keyCode == kVK_ANSI_Z { return true } // Redo
+        return false
     }
 
     private static func carbonModifiers(from flags: NSEvent.ModifierFlags) -> Int {
