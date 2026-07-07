@@ -852,7 +852,7 @@ class FocusHighlighter {
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return false }
         switch BorderStyle.current {
         case .ants, .handDrawn: return true
-        case .solid, .dashed: return false
+        case .solid, .dashed, .corners: return false
         }
     }
 
