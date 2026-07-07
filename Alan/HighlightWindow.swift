@@ -188,9 +188,10 @@ class HighlightView: NSView {
     }
 
     // The configured border color: party mode outranks everything
-    // (obviously), then per-app colors, then the light/dark wells. The
-    // border is always drawn for the frontmost app's focused window, so
-    // the frontmost app is the right source for the per-app hue.
+    // (obviously), then per-app colors, then the system accent color, then the
+    // light/dark wells. The border is always drawn for the frontmost app's
+    // focused window, so the frontmost app is the right source for the per-app
+    // hue.
     static func currentBorderColor() -> NSColor {
         if UserDefaults.standard.bool(forKey: Key.partyMode) {
             let phase = Date().timeIntervalSinceReferenceDate / Defaults.partyModeCycleDuration
@@ -200,6 +201,12 @@ class HighlightView: NSView {
         if UserDefaults.standard.bool(forKey: Key.perAppColors),
            let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier {
             return NSColor.perAppColor(for: bundleID, darkMode: NSAppearance.isDarkMode)
+        }
+        // A dynamic catalog color — it resolves against the overlay view's
+        // effective appearance during draw(_:), so light/dark is automatic and
+        // it tracks the user's accent choice in System Settings for free.
+        if UserDefaults.standard.bool(forKey: Key.useAccentColor) {
+            return NSColor.controlAccentColor
         }
         if NSAppearance.isLightMode {
             return UserDefaults.standard.color(forKey: Key.lightMode) ?? Defaults.lightModeColor

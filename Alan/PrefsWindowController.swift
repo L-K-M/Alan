@@ -24,6 +24,7 @@ class PrefsWindowController: NSWindowController {
     private let lightModeColorWell = NSColorWell()
     private let darkModeColorWell = NSColorWell()
     private let perAppColorsCheckbox = NSButton(checkboxWithTitle: "Per-app border colors", target: nil, action: nil)
+    private let useAccentColorCheckbox = NSButton(checkboxWithTitle: "Use system accent color", target: nil, action: nil)
     private let glowingBorderCheckbox = NSButton(checkboxWithTitle: "Glowing border", target: nil, action: nil)
     private let strongerShadowCheckbox = NSButton(checkboxWithTitle: "Stronger shadow", target: nil, action: nil)
     private let partyModeCheckbox = NSButton(checkboxWithTitle: "Party mode 🌈", target: nil, action: nil)
@@ -190,6 +191,7 @@ class PrefsWindowController: NSWindowController {
         }
 
         setUp(perAppColorsCheckbox, action: #selector(perAppColorsChanged(_:)))
+        setUp(useAccentColorCheckbox, action: #selector(useAccentColorChanged(_:)))
         setUp(glowingBorderCheckbox, action: #selector(glowingBorderChanged(_:)))
         setUp(strongerShadowCheckbox, action: #selector(strongerShadowChanged(_:)))
         setUp(partyModeCheckbox, action: #selector(partyModeChanged(_:)))
@@ -207,6 +209,7 @@ class PrefsWindowController: NSWindowController {
             [makeLabel("Border Style:"), borderStylePopUp, empty],
             [makeLabel("Light Mode:"), lightModeColorWell, empty],
             [makeLabel("Dark Mode:"), darkModeColorWell, empty],
+            [empty, useAccentColorCheckbox, empty],
             [empty, perAppColorsCheckbox, empty],
             [empty, glowingBorderCheckbox, empty],
             [empty, strongerShadowCheckbox, empty],
@@ -474,6 +477,13 @@ class PrefsWindowController: NSWindowController {
         shakeToFindCheckbox.state = defaults.bool(forKey: Key.shakeToFind) ? .on : .off
         flashOnSpaceChangeCheckbox.state = defaults.bool(forKey: Key.flashOnSpaceChange) ? .on : .off
         perAppColorsCheckbox.state = defaults.bool(forKey: Key.perAppColors) ? .on : .off
+        useAccentColorCheckbox.state = defaults.bool(forKey: Key.useAccentColor) ? .on : .off
+        // The light/dark wells become silent no-ops while the accent color is
+        // the source (accent outranks them), so grey them out — reversibly.
+        // Per-app colors still outrank accent, so that checkbox stays enabled.
+        let accentOn = defaults.bool(forKey: Key.useAccentColor)
+        lightModeColorWell.isEnabled = !accentOn
+        darkModeColorWell.isEnabled = !accentOn
         if let styleIndex = BorderStyle.allCases.firstIndex(of: BorderStyle.current) {
             borderStylePopUp.selectItem(at: styleIndex)
         }
@@ -560,6 +570,10 @@ class PrefsWindowController: NSWindowController {
 
     @objc func perAppColorsChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.perAppColors)
+    }
+
+    @objc func useAccentColorChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.useAccentColor)
     }
 
     @objc func spotlightModeChanged(_ sender: NSButton) {
