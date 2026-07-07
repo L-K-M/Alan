@@ -68,6 +68,7 @@ struct Key {
     static let borderStyle = "borderStyle"
     static let useAccentColor = "useAccentColor"
     static let showInScreenshots = "showInScreenshots"
+    static let contrastCasing = "contrastCasing"
 
     // Every key the highlighter reacts to. FocusHighlighter installs a KVO
     // observer per key so that external writes — `defaults write` from
@@ -81,7 +82,8 @@ struct Key {
         focusPulse, perAppColors, spotlightMode, findMyWindowHotkey, partyMode,
         spotlightDimLevel, animateMovement, moveAnimationDuration,
         findMyWindowKeyCode, findMyWindowModifiers, shakeToFind,
-        flashOnSpaceChange, paused, borderStyle, useAccentColor, showInScreenshots
+        flashOnSpaceChange, paused, borderStyle, useAccentColor, showInScreenshots,
+        contrastCasing
     ]
 }
 
