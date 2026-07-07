@@ -377,8 +377,17 @@ class FocusHighlighter {
     // flashes on top of the dimming.
     func flashBorder() {
         guard flashTimer == nil else { return }
-        guard let (_, axFrame) = currentFocusedWindow() else { return }
-        let frame = cocoaRect(fromAXRect: axFrame)
+        // Own the overlay exclusively for the flash. A border or spotlight
+        // glide still running would keep re-fronting the window on its own
+        // schedule — the flashOnSpaceChange path fires this 0.2 s after a Space
+        // switch, inside the ~0.25 s glide window — and defeat the off-phase
+        // orderOut below, so the border wouldn't visibly blink.
+        borderAnimationTimer?.invalidate()
+        borderAnimationTimer = nil
+        spotlightAnimationTimer?.invalidate()
+        spotlightAnimationTimer = nil
+
+        guard var frame = currentFocusCocoaFrame() else { return }
 
         flashCount = 0
         highlightWindow.updateFrame(to: frame)
@@ -413,11 +422,24 @@ class FocusHighlighter {
             } else if self.flashCount % 2 == 1 {
                 self.highlightWindow.orderOut(nil)
             } else {
+                // Re-sample the focused window's live position each reveal, so
+                // a window that moved mid-flash is flashed where it is now.
+                // Fall back to the last-known frame on a transient AX stall so
+                // a hiccup doesn't blank an on-phase.
+                if let live = self.currentFocusCocoaFrame() { frame = live }
                 self.highlightWindow.updateFrame(to: frame)
             }
         }
         RunLoop.current.add(timer, forMode: .common)
         flashTimer = timer
+    }
+
+    // The focused window's frame in Cocoa coordinates right now, or nil if it
+    // can't be resolved. Used by the flash to point at where the window is on
+    // each reveal instead of replaying a rect captured once.
+    private func currentFocusCocoaFrame() -> CGRect? {
+        guard let (_, axFrame) = currentFocusedWindow() else { return nil }
+        return cocoaRect(fromAXRect: axFrame)
     }
 
     // MARK: - AX notifications
@@ -784,9 +806,22 @@ class FocusHighlighter {
             highlightWindow.setPartyMode(false)
             highlightWindow.setBorderStyleAnimating(false)
             highlightWindow.orderOut(nil)
+            // Cancel any border glide still in flight: each of its ticks calls
+            // updateFrame → orderFrontRegardless and would flicker the
+            // just-hidden border back on over the dim for the rest of the
+            // glide. (moveSpotlight invalidates only its own timer.) The
+            // remembered displayedBorderFrame is left intact so a switch back
+            // to border mode still has a position to glide from.
+            borderAnimationTimer?.invalidate()
+            borderAnimationTimer = nil
             moveSpotlight(to: frame)
         } else {
             hideDimWindows()
+            // Symmetrically, cancel any spotlight glide still in flight — its
+            // ticks re-front the dim windows and would resurrect the dimming
+            // over the border.
+            spotlightAnimationTimer?.invalidate()
+            spotlightAnimationTimer = nil
             moveBorder(to: frame)
             // The party and animated-style redraw timers only need to run
             // while the border is actually on screen.
