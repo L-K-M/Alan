@@ -320,7 +320,15 @@ class HighlightView: NSView {
             let shadow = NSShadow()
             shadow.shadowColor = NSColor.black.withAlphaComponent(0.99)
             shadow.shadowBlurRadius = 25
-            shadow.shadowOffset = NSSize(width: 0, height: -3)
+            // The drop should fall *downward on screen* in both draw contexts.
+            // shadowOffset is in the current context's user space, so its sign
+            // has to follow the flip: HighlightView is flipped (y grows down, so
+            // a downward drop is +3), while the unflipped Settings preview needs
+            // -3. Reading isFlipped from the context keeps the overlay and the
+            // preview casting the shadow on the *same* side instead of opposite
+            // ones (the overlay used to drop it upward). Glow stays centered.
+            let flipped = NSGraphicsContext.current?.isFlipped ?? false
+            shadow.shadowOffset = NSSize(width: 0, height: flipped ? 3 : -3)
             shadow.set()
 
             color.setStroke()
