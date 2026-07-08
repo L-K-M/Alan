@@ -90,6 +90,50 @@ minimization. The raw-bounds fallback (BUG-1, shipped) plus the existing
 `leftMouseUp` refresh already cover the click-driven case. Documented as a
 platform limitation.
 
+### BUG-6 · Full-screen & elevated-chrome false borders from the raw-bounds fallback
+*sev high / conf high / [dev]*
+**Where:** `FocusHighlighter.swift` — the `refresh()` full-screen suppression,
+the `(nil, topBounds)` fallback in `currentFocusedWindow()`, and
+`topmostWindowBounds`.
+**Problem:** The raw-bounds fallback (BUG-1) draws a border at the window
+server's topmost app-owned bounds whenever AX can't name the window, and
+guarded full-screen suppression with `if let windowElement`. In a native
+full-screen Space the topmost app-owned window is frequently the auto-hiding
+unified toolbar / title-bar accessory — a separate window, same pid, not a
+nameable AXWindow — so resolution returns `(nil, toolbarBounds)`; the `if let`
+skips the full-screen check entirely and a border is drawn around the toolbar.
+The same pass's layer-ceiling raise (3→8) widened which elevated chrome
+qualifies as "topmost": CleanMyMac's floating overlay panel is the reported
+second case, where the border hugs a small region instead of the window.
+Full-screen (not tiled) windows must get *no* border; Split View tiles must
+keep theirs.
+**Fix (implemented this pass):** (1) `shouldSuppressForFullScreen` probes the
+frontmost app's own focused/main window for a screen-filling full-screen
+window when the resolved element is nil, so the whole full-screen Space is
+suppressed regardless of what the z-order latched onto — Split View tiles fill
+only half the screen, so `windowFillsScreen` is false and they keep their
+border. (2) Restrict the blind `(nil, topBounds)` draw to layer-0 windows;
+elevated *unnamed* chrome falls through to the keyboard-focus resolution
+instead. The named key/main/`appWindowMatching` cross-checks still span the
+full 0…8 range, so a nameable modal dialog at an elevated layer is unaffected,
+and Finder's layer-0 copy-progress panel still gets its border.
+**Resolution:** ✅ Implemented → `claude/active-window-detection-regressions`.
+Residuals, deferred (need a device or a larger redesign):
+- If the same frontmost app has a full-screen window parked on *another* Space
+  while showing an unnameable raw-bounds window on the desktop, the probe
+  over-suppresses; AX exposes no clean per-Space signal to separate the two.
+- If CleanMyMac's offending window is itself layer-0 *and* panel-sized, it is
+  geometrically and layer-wise indistinguishable from the copy-progress panel
+  the fallback exists to serve — the user's "might be unsolvable" holds for
+  that specific case. Do **not** raise the >40×40 floor toward panel size; that
+  regresses the copy-progress panel.
+- `isSameWindow(nil, nil) == true` collapses all raw-bounds windows to one
+  identity (no focus chip/pulse/trail between two of them, and a shared frame
+  can short-circuit the redraw); thread the CGWindowID for a real identity.
+- The durable fix for the whole class is to take the raw-bounds fallback only
+  when the bounds plausibly correspond to a real content/panel window, rather
+  than enumerating chrome exceptions one at a time.
+
 ---
 
 ## B. Performance

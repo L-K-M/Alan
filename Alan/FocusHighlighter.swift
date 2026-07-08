@@ -821,8 +821,13 @@ class FocusHighlighter {
         // Native full-screen windows never get a border: nothing else is
         // visible on their Space to tell focus apart from. Split View tiles
         // also report AXFullScreen, so only windows that actually cover the
-        // screen are skipped — tiled windows keep their border.
-        if let windowElement, isFullScreen(windowElement), windowFillsScreen(cocoaFrame) {
+        // screen are skipped — tiled windows keep their border. When the
+        // resolution handed back raw z-order bounds with no element (a
+        // full-screen window's auto-hiding toolbar overlay is the classic
+        // case), this also probes the frontmost app's own window, so the
+        // border is suppressed for the whole full-screen Space rather than
+        // drawn around the toolbar.
+        if shouldSuppressForFullScreen(resolvedElement: windowElement, frame: cocoaFrame) {
             if highlightVisible {
                 hideHighlight()
                 lastFrame = nil
@@ -1152,6 +1157,45 @@ class FocusHighlighter {
         return frame.contains(target)
     }
 
+    // Whether the border should be suppressed because the frontmost app is
+    // showing a native, screen-filling full-screen window.
+    //
+    // When we have a named window element its own AXFullScreen is authoritative
+    // and cheap — this is the original check, so Split View tiles (full-screen
+    // but half the screen) and maximized/zoomed windows are unaffected. When the
+    // element is nil the frame came from the raw z-order fallback and may be a
+    // full-screen window's auto-hiding toolbar/title-bar accessory — itself
+    // neither full-screen nor screen-filling — so ask the frontmost app's own
+    // focused/main window instead. Reached only on the rare raw-bounds path (and
+    // after the steady-state early-return), so the extra AX round-trips aren't
+    // paid on the common path.
+    private func shouldSuppressForFullScreen(resolvedElement: AXUIElement?, frame: CGRect) -> Bool {
+        if let resolvedElement {
+            return isFullScreen(resolvedElement) && windowFillsScreen(frame)
+        }
+        return frontmostAppShowsScreenFillingFullScreenWindow()
+    }
+
+    // True when the frontmost app's focused or main window is a native
+    // full-screen window that covers its display. Split View tiles report
+    // AXFullScreen too but fill only half the screen, so they return false here
+    // and keep their border. The toolbar/title-bar accessory is never the app's
+    // key or main window, so this reads the actual content window even while the
+    // toolbar is showing.
+    private func frontmostAppShowsScreenFillingFullScreenWindow() -> Bool {
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return false }
+        let appElement = AXUIElementCreateApplication(pid)
+        for attribute in [kAXFocusedWindowAttribute as String, kAXMainWindowAttribute as String] {
+            guard let window = elementAttribute(appElement, attribute),
+                  isFullScreen(window),
+                  let windowFrame = axFrame(of: window) else { continue }
+            if windowFillsScreen(cocoaRect(fromAXRect: windowFrame)) {
+                return true
+            }
+        }
+        return false
+    }
+
     // Native full screen is reported through the window's AXFullScreen
     // attribute; there is no public constant for it, the raw string is the
     // documented value. Anything but a readable true means "not full screen".
@@ -1249,7 +1293,8 @@ class FocusHighlighter {
         // live drag — the dragged window is key, so keyboard focus is already
         // right, saving IPC per 30 Hz tick.
         if dragTimer == nil, let frontPid,
-           let topBounds = topmostWindowBounds(pid: frontPid) {
+           let top = topmostWindowBounds(pid: frontPid) {
+            let topBounds = top.bounds
             // Cheapest first: the keyboard-focus window already is the
             // topmost window — the overwhelmingly common case.
             if let focusWindow, let frame = axFrame(of: focusWindow),
@@ -1285,7 +1330,21 @@ class FocusHighlighter {
             // back to the (provably-behind) keyboard-focus window. topBounds is
             // already in AXFrame's top-left global space, so refresh()'s
             // cocoaRect(fromAXRect:) converts it just like any other frame.
-            return (nil, topBounds)
+            //
+            // But only for a layer-0 (normal) window. An elevated window we
+            // couldn't name is chrome, not content the border should hug: a
+            // full-screen app's auto-hiding toolbar/title-bar accessory, or an
+            // app's floating HUD/overlay panel (CleanMyMac's is the reported
+            // case). Drawing a raw rectangle around such a window is the
+            // regression this guard prevents — since the layer ceiling was
+            // raised 3→8 for the named cross-checks, more of that chrome reaches
+            // here. The named checks above still span the full 0...8 range, so a
+            // real modal dialog at an elevated layer resolves through a named
+            // path (non-nil element) untouched; an elevated *unnamed* window
+            // falls through to the keyboard-focus resolution below instead.
+            if top.layer == 0 {
+                return (nil, topBounds)
+            }
         }
 
         // Fall back to the keyboard-focus resolution: floating palettes
@@ -1359,7 +1418,7 @@ class FocusHighlighter {
     // Bounds of the frontmost app-owned window in the window server's
     // front-to-back order. AXFrame and CGWindow bounds share the top-left
     // global coordinate space, so the result is comparable to an AXFrame.
-    private func topmostWindowBounds(pid: pid_t) -> CGRect? {
+    private func topmostWindowBounds(pid: pid_t) -> (bounds: CGRect, layer: Int)? {
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         guard let infoList = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
             return nil
@@ -1369,7 +1428,10 @@ class FocusHighlighter {
         // (kCGModalPanelWindowLevel = 8) are kept — a frontmost dialog can sit
         // at the latter. Menus, pop-ups, status items, the Dock, and the menu
         // bar all sit higher (utility 19, Dock 20, mainMenu 24, statusBar 25,
-        // popUpMenu 101) and are skipped.
+        // popUpMenu 101) and are skipped. The layer is returned alongside the
+        // bounds so the caller can allow the cheap named cross-checks across the
+        // whole 0...8 band while refusing the blind raw-bounds fallback for
+        // elevated chrome it couldn't name.
         for info in infoList {
             guard let ownerNumber = info[kCGWindowOwnerPID as String] as? NSNumber,
                   ownerNumber.int32Value == pid else { continue }
@@ -1378,7 +1440,7 @@ class FocusHighlighter {
             guard let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
                   let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary) else { continue }
             guard bounds.width > 40, bounds.height > 40 else { continue }
-            return bounds
+            return (bounds, layer)
         }
         return nil
     }
