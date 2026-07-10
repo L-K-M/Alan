@@ -1271,6 +1271,10 @@ class FocusHighlighter {
     // border to the wrong window. The window server's z-order knows better:
     // when neither the keyboard-focus window nor the main window matches the
     // topmost app-owned window, resolve that window directly by frame.
+    // The one thing the z-order must *not* be trusted about is chrome: in a
+    // full-screen or Split View Space the topmost app-owned window is often
+    // the toolbar strip hosted above the content window — furniture to see
+    // past, not a window to hug (see isTopEdgeChrome).
     private func currentFocusedWindow() -> (element: AXUIElement?, frame: CGRect)? {
         let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
 
@@ -1297,7 +1301,8 @@ class FocusHighlighter {
             let topBounds = top.bounds
             // Cheapest first: the keyboard-focus window already is the
             // topmost window — the overwhelmingly common case.
-            if let focusWindow, let frame = axFrame(of: focusWindow),
+            let focusFrame = focusWindow.flatMap { axFrame(of: $0) }
+            if let focusWindow, let frame = focusFrame,
                framesRoughlyEqual(frame, topBounds) {
                 return (focusWindow, frame)
             }
@@ -1305,9 +1310,41 @@ class FocusHighlighter {
             // A dialog that became the app's main window without taking
             // keyboard focus.
             let appElement = AXUIElementCreateApplication(frontPid)
-            if let mainWindow = elementAttribute(appElement, kAXMainWindowAttribute as String),
-               let frame = axFrame(of: mainWindow),
+            let mainWindow = elementAttribute(appElement, kAXMainWindowAttribute as String)
+            let mainFrame = mainWindow.flatMap { axFrame(of: $0) }
+            if let mainWindow, let frame = mainFrame,
                framesRoughlyEqual(frame, topBounds) {
+                return (mainWindow, frame)
+            }
+
+            // The topmost window is a strip glued to the top edge of the
+            // focused or main window: title-bar/toolbar chrome, not a sibling
+            // panel to prefer. The canonical case is a full-screen or Split
+            // View Space, where AppKit hosts the window's toolbar in a
+            // separate same-pid window (NSToolbarFullScreenWindow) that sits
+            // above the content in z-order — persistently visible in Split
+            // View, so *every* refresh lands here. Without this guard the
+            // strip either gets named by the appWindowMatching scan below
+            // (when the app exposes it as an AX window) or, at layer 0, drawn
+            // blind by the raw-bounds fallback — a border around the header
+            // instead of the window, because a Split View tile is
+            // AXFullScreen-but-half-screen and thus (correctly) not
+            // suppressed by the full-screen check. Chrome means the z-order
+            // snapshot is pointing at furniture: resolve to the content
+            // window the strip belongs to — the one whose top edge it hugs —
+            // checking focus first so a window that is both focused and main
+            // resolves as the focused one. Returning the *owner*, not
+            // whichever window happens to hold keyboard focus, also keeps
+            // the full-screen suppression intact when the strip rides a
+            // full-screen content window while some same-pid panel holds
+            // focus: the owner is the full-screen window, and refresh()
+            // then suppresses the whole Space exactly as before.
+            if let focusWindow, let frame = focusFrame,
+               isTopEdgeChrome(topBounds, of: frame) {
+                return (focusWindow, frame)
+            }
+            if let mainWindow, let frame = mainFrame,
+               isTopEdgeChrome(topBounds, of: frame) {
                 return (mainWindow, frame)
             }
 
@@ -1469,6 +1506,37 @@ class FocusHighlighter {
             && abs(a.minY - b.minY) < tolerance
             && abs(a.width - b.width) < tolerance
             && abs(a.height - b.height) < tolerance
+    }
+
+    // Whether window-server bounds look like title-bar/toolbar chrome riding
+    // the top edge of a window at `windowFrame` (both rects in top-left
+    // global space): same left/right edges, anchored at the window's top edge
+    // (an auto-hiding overlay) or ending exactly where the window begins (a
+    // pinned toolbar laid out above the content), and strip-shaped rather
+    // than window-shaped. The 8 pt anchoring tolerance is deliberately tight:
+    // a sheet is also wide and frontmost, but hangs ~28 pt below the window's
+    // top edge, so it never qualifies — nor does a centered progress panel,
+    // which matches neither the window's left edge nor its width. The height
+    // caps keep tall top-anchored overlays out: real unified toolbars run
+    // ~55–110 pt, so 160 leaves headroom without admitting panels, and the
+    // relative cap keeps "strip" meaning a sliver of the window even for
+    // small windows. The proportion test is what finally separates chrome
+    // from a small window that coincidentally lines up: a toolbar is a
+    // ribbon, at least 4× wider than tall even on a narrow Split View tile
+    // (~5:1 at the 322 pt minimum tile width), while the panel class the
+    // z-order cross-check exists to serve — Finder's ~460×140 copy-progress
+    // panel, flush-attached sheets — runs ~3:1 and stays eligible for the
+    // named/raw-bounds resolutions below no matter how it happens to align.
+    private func isTopEdgeChrome(_ bounds: CGRect, of windowFrame: CGRect) -> Bool {
+        let tolerance: CGFloat = 8
+        guard abs(bounds.minX - windowFrame.minX) < tolerance,
+              abs(bounds.width - windowFrame.width) < tolerance,
+              bounds.height <= 160,
+              bounds.height < windowFrame.height * 0.5,
+              bounds.width >= bounds.height * 4
+        else { return false }
+        return abs(bounds.minY - windowFrame.minY) < tolerance
+            || abs(bounds.maxY - windowFrame.minY) < tolerance
     }
 }
 

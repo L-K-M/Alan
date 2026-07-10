@@ -132,7 +132,61 @@ Residuals, deferred (need a device or a larger redesign):
   can short-circuit the redraw); thread the CGWindowID for a real identity.
 - The durable fix for the whole class is to take the raw-bounds fallback only
   when the bounds plausibly correspond to a real content/panel window, rather
-  than enumerating chrome exceptions one at a time.
+  than enumerating chrome exceptions one at a time. (The top-edge-chrome
+  guard shipped with BUG-7 is the first piece of this: a *shape* test on the
+  bounds instead of a per-app exception.)
+
+### BUG-7 · Split View: border hugs the full-screen toolbar strip instead of the tile
+*sev high / conf high / [dev]*
+**Where:** `FocusHighlighter.swift` — the z-order cross-check in
+`currentFocusedWindow()` (`topmostWindowBounds` → `appWindowMatching` → the
+`(nil, topBounds)` fallback).
+**Problem:** In a full-screen *or Split View* Space, AppKit hosts the
+window's toolbar in a separate same-pid window (`NSToolbarFullScreenWindow`)
+that sits above the content window in z-order — persistently visible in
+Split View, so every refresh trips over it. The BUG-6 fix suppresses the
+whole Space only when the app's focused/main window is full-screen *and
+screen-filling*, which a Split View tile deliberately is not (it fills half
+the screen and must keep its border). So in Split View the z-order snapshot
+latches onto the toolbar strip and resolution returns it — either *named*,
+when the app exposes the strip as an AX window (`appWindowMatching` spans
+the full 0…8 layer band), or *blind*, when the strip sits at layer 0 and the
+raw-bounds fallback fires. Reported against WeChat: the border hugs the
+header/search strip instead of the WeChat tile. Neither of BUG-6's guards
+can catch this: the layer-0 restriction only blocks *elevated unnamed*
+chrome, and the full-screen probe correctly declines to suppress a tile.
+**Fix (implemented this pass):** a geometric chrome guard
+(`isTopEdgeChrome`) in the z-order cross-check, after the key/main equality
+checks and before `appWindowMatching`: when the topmost bounds are a strip
+glued to the top edge of the focused or main window — same left edge and
+width (±8 pt), anchored at the window's top edge (auto-hiding overlay) or
+ending exactly where the window begins (pinned toolbar), height ≤ 160 pt and
+< half the window, and proportioned like a ribbon (width ≥ 4× height) — the
+snapshot is pointing at furniture, so resolution returns the window the
+strip *belongs to*: whichever of focus/main actually passed the shape test,
+focus checked first. Returning the owner rather than blindly preferring
+focus keeps the BUG-6 full-screen suppression intact when the strip rides a
+full-screen content window while a same-pid layer-0 panel holds keyboard
+focus — the owner is the full-screen window, and `refresh()` suppresses the
+Space as before. The tight top-anchoring tolerance keeps sheets (which hang
+~28 pt below the top edge) and centered panels out, and the 4:1 proportion
+test excludes the panel class the cross-check exists to serve (Finder's
+~460×140 copy-progress panel and flush sheets run ~3:1) even when one
+coincidentally aligns with the window's edges — so BUG-1's headline fix is
+untouched; a strip that fails the shape test resolves exactly as before.
+**Resolution:** ✅ Implemented → `claude/alan-window-highlighting-qngnkr`,
+after a multi-agent adversarial review of the first draft (the owner-first
+return and the proportion test are both products of that review). Residuals:
+- If the app's AX tree resolves keyboard focus *into the strip itself*
+  (typing in a toolbar search field whose AXWindow is the accessory), the
+  strip is legitimately the focused window and still gets the border —
+  arguably correct, since that is where input goes.
+- A genuine sibling window that is ribbon-proportioned (≥ 4:1), equal-width
+  and flush with the focused window's top edge within 8 pt on all three
+  axes is misread as chrome and the border lands on the window behind it.
+  No such stock macOS window is known (sheets and progress panels fail the
+  proportion test; palettes are elevated and resolve earlier); accepted as
+  the price of the shape heuristic.
 
 ---
 
