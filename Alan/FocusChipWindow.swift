@@ -82,7 +82,14 @@ class FocusChipWindow: NSWindow {
         label.stringValue = name
         iconView.image = icon
 
-        let textWidth = ceil((name as NSString).size(withAttributes: [.font: FocusChipWindow.chipFont]).width)
+        // Measure through the field's own cell, not a raw NSString: the cell
+        // pads the glyphs by a couple of points beyond the string width, so a
+        // frame sized to the bare measurement came up those points short and
+        // the truncating line-break mode ate the tail of every name. The
+        // frame set by sizeToFit is discarded — layout below re-derives it
+        // from the clamped width.
+        label.sizeToFit()
+        let textWidth = ceil(label.frame.width)
         let clampedText = min(textWidth, FocusChipWindow.maxTextWidth)
         let width = pad + iconSize + gap + clampedText + pad
 
