@@ -180,7 +180,7 @@ class PrefsWindowController: NSWindowController {
         // height, then grow the window by whatever the tallest tab still
         // lacks. The placeholder height stays as a floor: a shrunken tab set
         // never shrinks the window below it.
-        contentView.layoutIfNeeded()
+        contentView.layoutSubtreeIfNeeded()
         let shortfall = (tallestTab - tabView.contentRect.height).rounded(.up)
         if shortfall > 0 {
             var size = contentView.frame.size
