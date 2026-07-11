@@ -98,15 +98,23 @@ class FocusChipWindow: NSWindow {
         iconView.frame = NSRect(x: pad, y: (h - iconSize) / 2, width: iconSize, height: iconSize)
         label.frame = NSRect(x: pad + iconSize + gap, y: (h - 18) / 2, width: clampedText, height: 18)
 
-        // Center above the window's top edge, clamped into the screen's visible
-        // frame; if there's no room above, tuck it just inside the top edge.
+        // Center above the window's top edge, clamped into the screen's
+        // visible frame. A window riding close to the top of the screen
+        // leaves only a sliver up there, and a chip wedged between the window
+        // and the menu bar reads as stuck to the screen edge rather than
+        // floating over the window — so the above placement is used only
+        // when the chip gets at least its own height of clear air above it.
+        // Otherwise the chip drops just below the window's top edge,
+        // badge-style over the title bar, where it plainly belongs to the
+        // window. (The min guards a window extending past the visible top,
+        // and the final clamp keeps either placement on screen.)
         let screen = screenContaining(windowRect) ?? NSScreen.main
         let visible = screen?.visibleFrame ?? windowRect
         var x = windowRect.midX - width / 2
         x = max(visible.minX + 8, min(x, visible.maxX - width - 8))
         var y = windowRect.maxY + 8
-        if y + h > visible.maxY - 4 {
-            y = windowRect.maxY - h - 8
+        if y + h + h > visible.maxY {
+            y = min(windowRect.maxY, visible.maxY) - h - 8
         }
         y = max(visible.minY + 8, min(y, visible.maxY - h - 4))
 
