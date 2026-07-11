@@ -70,6 +70,19 @@ class FocusHighlighter {
     // reflect a failed (in-use) shortcut without polling.
     static let hotkeyRegistrationDidChange = Notification.Name("AlanHotkeyRegistrationDidChange")
 
+    // Set when the Accessibility grant disappears while Alan is running.
+    // Every AX entry point stands down behind it — see suspendForTrustLoss()
+    // for why continuing to run without the grant can wedge far more than
+    // just this process.
+    private var axTrustLost = false
+    private var trustRecheckScheduled = false
+    private var trustChangeObserver: NSObjectProtocol?
+
+    // Posted once, on the moment the grant is observed lost at runtime, so
+    // the app delegate can walk the user through re-granting with the same
+    // guided flow the launch check uses.
+    static let accessibilityTrustLost = Notification.Name("AlanAccessibilityTrustLost")
+
     private var shakeMonitor: Any?
     private var shakeLastX: CGFloat?
     private var shakeDirection: CGFloat = 0
@@ -211,6 +224,109 @@ class FocusHighlighter {
             DispatchQueue.main.asyncAfter(deadline: .now() + Defaults.spaceChangeFlashDelay) {
                 self?.flashBorder()
             }
+        }
+
+        // TCC posts this distributed notification whenever any process's
+        // Accessibility trust changes — including Alan's being revoked
+        // mid-run (an update re-signing the app, or the user toggling it
+        // off). That has to be treated as a hard stop, not a transient
+        // error; reconcileAccessibilityTrust() suspends or resumes the
+        // whole highlighter to match. The short delay lets the TCC
+        // database settle before the trust re-check reads it.
+        trustChangeObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.accessibility.api"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self?.reconcileAccessibilityTrust()
+            }
+        }
+    }
+
+    // MARK: - Accessibility trust
+
+    // Bring the highlighter in line with the current trust state: suspend
+    // everything on a revocation, resume and re-announce on a re-grant.
+    // Idempotent and cheap (AXIsProcessTrusted is a local TCC lookup), so it
+    // can be called from the distributed notification, from any AX call that
+    // comes back apiDisabled, and from the app delegate after its re-grant
+    // flow — whichever fires first wins, the rest no-op.
+    func reconcileAccessibilityTrust() {
+        let trusted = AXIsProcessTrusted()
+        if !trusted, !axTrustLost {
+            suspendForTrustLoss()
+        } else if trusted, axTrustLost {
+            axTrustLost = false
+            // Everything comes back the way a fresh start brings it up, and
+            // the flash is the same "you're all set" moment the launch
+            // grant gets.
+            observeFrontmostApp()
+            forceUpdate()
+            flashBorder()
+        }
+    }
+
+    // The Accessibility grant is gone. Stop every source of AX traffic — the
+    // app observer, the drag poll, the retry and settle timers — and hide
+    // the overlays rather than leave a stale border up. Until the grant
+    // returns, refresh(), flashBorder(), and observeFrontmostApp() are
+    // no-ops, so no timer, monitor, or notification can restart the traffic
+    // behind our back.
+    //
+    // This is the fix for "revoking Accessibility while Alan runs freezes
+    // the machine": an untrusted Alan previously kept hammering the AX API
+    // forever — apiDisabled was treated as a transient stall, so every
+    // failure armed another retry, every app switch re-attempted observer
+    // registration against the new app's AX server, and the drag monitor
+    // kept 30 Hz resolution polls alive — with each call a synchronous IPC
+    // that can block out its messaging timeout once the API starts refusing
+    // the caller. Standing down completely gives the system nothing to
+    // block on.
+    private func suspendForTrustLoss() {
+        axTrustLost = true
+        stopObservingApp()
+        stopDragTracking()
+        dragSuppressedUntilMouseUp = false
+        settleRefreshTimer?.invalidate()
+        settleRefreshTimer = nil
+        settleRefreshRemaining = 0
+        resolutionRetryTimer?.invalidate()
+        resolutionRetryTimer = nil
+        resolutionRetryCount = 0
+        flashTimer?.invalidate()
+        flashTimer = nil
+        hideHighlight()
+        lastFrame = nil
+        lastFocusedWindow = nil
+        NotificationCenter.default.post(name: Self.accessibilityTrustLost, object: self)
+    }
+
+    // Coalesce the apiDisabled-triggered re-checks: a single failing refresh
+    // can report the error from several AX calls in a row.
+    private func scheduleTrustRecheck() {
+        guard !trustRecheckScheduled else { return }
+        trustRecheckScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.trustRecheckScheduled = false
+            self.reconcileAccessibilityTrust()
+        }
+    }
+
+    // Every AX error funnels through here. cannotComplete is a transient
+    // stall (a busy or hung app) that the resolution machinery should retry;
+    // apiDisabled is the API refusing this process — in practice, the
+    // Accessibility grant vanishing — so it additionally queues a trust
+    // re-check that stands the whole highlighter down. It still counts as a
+    // timeout too, so the in-flight resolution degrades exactly as before;
+    // the re-check lands right after it finishes.
+    private func noteAXError(_ err: AXError) {
+        if err == .cannotComplete || err == .apiDisabled {
+            lastResolutionTimedOut = true
+        }
+        if err == .apiDisabled {
+            scheduleTrustRecheck()
         }
     }
 
@@ -398,7 +514,9 @@ class FocusHighlighter {
     // the window you can't see the border of. In spotlight mode the border
     // flashes on top of the dimming.
     func flashBorder() {
-        guard flashTimer == nil else { return }
+        // Without the Accessibility grant there is nothing to resolve a
+        // frame from (and no AX call should be made trying).
+        guard !axTrustLost, flashTimer == nil else { return }
 
         // Optionally bring the pointer home to the focused window — losing the
         // window and losing the cursor tend to be the same moment. Done up front
@@ -552,6 +670,10 @@ class FocusHighlighter {
     }
 
     private func observeFrontmostApp() {
+        // Registering notifications against an app's AX server is exactly
+        // the traffic that must stop while the grant is lost — the workspace
+        // activation observer keeps calling here on every app switch.
+        guard !axTrustLost else { return }
         guard let app = NSWorkspace.shared.frontmostApplication else { return }
         let pid = app.processIdentifier
         guard pid != observedPid else { return }
@@ -670,7 +792,7 @@ class FocusHighlighter {
     // MARK: - Live drag tracking
 
     private func startDragTracking() {
-        guard dragTimer == nil, !dragSuppressedUntilMouseUp else { return }
+        guard !axTrustLost, dragTimer == nil, !dragSuppressedUntilMouseUp else { return }
         dragUnchangedTicks = 0
 
         let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
@@ -705,6 +827,10 @@ class FocusHighlighter {
     // MARK: - Border placement
 
     private func refresh() {
+        // While the Accessibility grant is lost every entry point stands
+        // down; reconcileAccessibilityTrust() restarts things on a re-grant.
+        guard !axTrustLost else { return }
+
         // While the flash is running it owns the highlight window.
         guard flashTimer == nil else { return }
 
@@ -1212,9 +1338,7 @@ class FocusHighlighter {
     private func elementAttribute(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
         var value: CFTypeRef?
         let err = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
-        if err == .cannotComplete || err == .apiDisabled {
-            lastResolutionTimedOut = true
-        }
+        noteAXError(err)
         guard err == .success,
               let value,
               CFGetTypeID(value) == AXUIElementGetTypeID()
@@ -1405,9 +1529,7 @@ class FocusHighlighter {
             kAXFocusedUIElementAttribute as CFString,
             &focusedElement
         )
-        if err == .cannotComplete || err == .apiDisabled {
-            lastResolutionTimedOut = true
-        }
+        noteAXError(err)
         guard err == .success,
               let focusedElement,
               CFGetTypeID(focusedElement) == AXUIElementGetTypeID()
@@ -1440,9 +1562,7 @@ class FocusHighlighter {
     private func appWindowMatching(_ bounds: CGRect, appElement: AXUIElement) -> AXUIElement? {
         var value: CFTypeRef?
         let err = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value)
-        if err == .cannotComplete || err == .apiDisabled {
-            lastResolutionTimedOut = true
-        }
+        noteAXError(err)
         guard err == .success, let windows = value as? [AXUIElement] else { return nil }
         for window in windows.prefix(40) {
             if let frame = axFrame(of: window), framesRoughlyEqual(frame, bounds) {
@@ -1485,9 +1605,7 @@ class FocusHighlighter {
     private func axFrame(of element: AXUIElement) -> CGRect? {
         var frameValue: CFTypeRef?
         let err = AXUIElementCopyAttributeValue(element, "AXFrame" as CFString, &frameValue)
-        if err == .cannotComplete || err == .apiDisabled {
-            lastResolutionTimedOut = true
-        }
+        noteAXError(err)
         guard err == .success,
               let cfValue = frameValue,
               CFGetTypeID(cfValue) == AXValueGetTypeID(),

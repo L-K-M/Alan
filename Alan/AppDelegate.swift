@@ -21,6 +21,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pauseMenuItem: NSMenuItem?
     private var excludeMenuItem: NSMenuItem?
     private var hideDockMenuItem: NSMenuItem?
+    // Re-entrancy guard for the trust-loss alert: trust can flap while the
+    // modal re-grant flow is already on screen, and a second modal session
+    // nested inside the first would wedge both.
+    private var handlingTrustLoss = false
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
 
@@ -58,6 +62,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupStatusItem()
 
         let permissionJustGranted = requestAccessibilityPermissionIfNeeded()
+
+        // If the grant vanishes while Alan is running (an update re-signing
+        // the app, or the user toggling it off), FocusHighlighter suspends
+        // all of its AX work and posts this; walk the user through
+        // re-granting with the same guided flow as launch.
+        NotificationCenter.default.addObserver(
+            forName: FocusHighlighter.accessibilityTrustLost,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, !self.handlingTrustLoss else { return }
+            self.handlingTrustLoss = true
+            self.requestAccessibilityPermissionIfNeeded(lostWhileRunning: true)
+            // The distributed-notification path normally resumes the
+            // highlighter on its own; reconciling here too covers a re-grant
+            // that somehow beat that notification, so a re-granted Alan can
+            // never stay suspended.
+            FocusHighlighter.shared.reconcileAccessibilityTrust()
+            self.handlingTrustLoss = false
+        }
 
         FocusHighlighter.shared.start()
 
@@ -231,8 +255,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // Returns true if we had to block on the user granting permission and it
     // was then granted (so the caller can announce the app is live).
+    // lostWhileRunning switches the wording for a grant that vanished
+    // mid-run, where "a recent update may have reset…" would be misleading.
     @discardableResult
-    func requestAccessibilityPermissionIfNeeded() -> Bool {
+    func requestAccessibilityPermissionIfNeeded(lostWhileRunning: Bool = false) -> Bool {
         // prompt:false — we present our own guided alert below and open System
         // Settings ourselves, so the system's built-in prompt would just be a
         // second dialog stacked on top. Querying trust still lists Alan under
@@ -253,7 +279,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // fresh ad-hoc-signed update presenting a different code signature to
         // TCC. Guide the user to re-add Alan instead of implying a first-run
         // setup, which is confusing when they granted it once already.
-        if UserDefaults.standard.bool(forKey: Key.hadAccessibilityGrant) {
+        if lostWhileRunning {
+            alert.informativeText = """
+            Alan’s Accessibility permission was just turned off, so window \
+            highlighting has stopped.
+
+            Re-enable “Alan” in System Settings → Privacy & Security → \
+            Accessibility — if the entry looks stale, remove it and re-add \
+            /Applications/Alan.app — and Alan will pick back up by itself, \
+            no relaunch needed.
+            """
+        } else if UserDefaults.standard.bool(forKey: Key.hadAccessibilityGrant) {
             alert.informativeText = """
             A recent update may have reset Alan’s Accessibility permission.
 

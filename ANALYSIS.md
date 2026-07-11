@@ -202,6 +202,43 @@ return and the proportion test are both products of that review). Residuals:
   4:1 toward 3:1 re-admits the ~3:1 copy-progress panel, and widening the
   8 pt anchor toward sheet offsets re-admits sheets.
 
+### BUG-8 · Losing Accessibility mid-run wedges the machine (Alan never stands down)
+*sev high / conf medium / [dev]*
+**Where:** `FocusHighlighter.swift` (AX error handling, retry machinery,
+observer registration) and `AppDelegate.swift` (trust checked only once, at
+launch).
+**Problem:** Revoking Alan's Accessibility grant while it runs reportedly
+freezes the whole machine, sometimes indefinitely. Nothing in the app ever
+re-checks trust after launch: `.apiDisabled` was lumped with
+`.cannotComplete` as a *transient stall*, so every failing resolution armed
+another 0.5 s retry, every app switch re-attempted the nine
+`AXObserverAddNotification` registrations against the new frontmost app's
+AX server (five retries per app), the drag monitor kept 30 Hz resolution
+polls alive, and the raw-bounds fallback even kept drawing borders from
+pure window-server data. Every AX call is a synchronous IPC serviced by
+other processes; once the API starts refusing the caller, calls can block
+out the messaging timeout instead of failing fast, and an Alan wedged in
+that state with observers still registered in other apps' AX servers gives
+the rest of the session something to block on. The exact blocking leg
+varies by macOS build — which is why conf is medium and the fix targets the
+class, not one mechanism.
+**Fix (implemented this pass):** treat trust as a monitored state. TCC's
+`com.apple.accessibility.api` distributed notification (plus a coalesced
+re-check whenever any AX call returns `.apiDisabled`, routed through a new
+`noteAXError`) drives `reconcileAccessibilityTrust()`: on loss,
+`suspendForTrustLoss()` tears down the AX observer, stops the drag poll and
+every retry/settle/flash timer, hides all overlays, and flips an
+`axTrustLost` flag behind which `refresh()`, `flashBorder()`,
+`observeFrontmostApp()`, and `startDragTracking()` are no-ops — zero AX
+traffic while untrusted, nothing to block on. On re-grant (the same
+distributed notification) the highlighter resumes as on a fresh start and
+flashes the border as the "you're all set" moment. The app delegate
+listens for the suspension and runs the existing guided re-grant flow with
+runtime-appropriate wording.
+**Resolution:** ✅ Implemented → `claude/alan-window-highlighting-qngnkr`.
+Needs on-device confirmation that revoke → suspend → re-grant → resume
+round-trips cleanly; the freeze itself can only be reproduced on a device.
+
 ---
 
 ## B. Performance
