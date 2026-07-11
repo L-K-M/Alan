@@ -1510,7 +1510,7 @@ class FocusHighlighter {
 
     // Whether window-server bounds look like title-bar/toolbar chrome riding
     // the top edge of a window at `windowFrame` (both rects in top-left
-    // global space): same left/right edges, anchored at the window's top edge
+    // global space): same left edge and width, anchored at the window's top edge
     // (an auto-hiding overlay) or ending exactly where the window begins (a
     // pinned toolbar laid out above the content), and strip-shaped rather
     // than window-shaped. The 8 pt anchoring tolerance is deliberately tight:
@@ -1521,12 +1521,17 @@ class FocusHighlighter {
     // ~55–110 pt, so 160 leaves headroom without admitting panels, and the
     // relative cap keeps "strip" meaning a sliver of the window even for
     // small windows. The proportion test is what finally separates chrome
-    // from a small window that coincidentally lines up: a toolbar is a
-    // ribbon, at least 4× wider than tall even on a narrow Split View tile
-    // (~5:1 at the 322 pt minimum tile width), while the panel class the
+    // from a small window that coincidentally lines up: the panel class the
     // z-order cross-check exists to serve — Finder's ~460×140 copy-progress
     // panel, flush-attached sheets — runs ~3:1 and stays eligible for the
-    // named/raw-bounds resolutions below no matter how it happens to align.
+    // named/raw-bounds resolutions no matter how it happens to align. The
+    // gate's flip side is a strip taller than a quarter of its window's
+    // width goes unrecognized: at the ~322 pt Split View minimum that means
+    // ~80 pt, enough for the title-bar+toolbar accessory of apps that can
+    // shrink that far, while taller compound chrome (Safari's toolbar plus
+    // tab and favorites bars) belongs to apps whose own minimum window
+    // widths keep their tiles at least 4× the strip. When the test misses,
+    // resolution simply proceeds exactly as it did before this guard.
     private func isTopEdgeChrome(_ bounds: CGRect, of windowFrame: CGRect) -> Bool {
         let tolerance: CGFloat = 8
         guard abs(bounds.minX - windowFrame.minX) < tolerance,

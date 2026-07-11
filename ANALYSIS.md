@@ -184,9 +184,23 @@ return and the proportion test are both products of that review). Residuals:
 - A genuine sibling window that is ribbon-proportioned (≥ 4:1), equal-width
   and flush with the focused window's top edge within 8 pt on all three
   axes is misread as chrome and the border lands on the window behind it.
-  No such stock macOS window is known (sheets and progress panels fail the
-  proportion test; palettes are elevated and resolve earlier); accepted as
-  the price of the shape heuristic.
+  No such stock macOS window is known — sheets and progress panels fail the
+  proportion test, and no stock palette parks flush, equal-width, at
+  another window's top edge. (Elevation itself is no shield: the guard
+  never reads the window's layer, so an elevated palette meeting the
+  geometry would be misread like a layer-0 one.) Accepted as the price of
+  the shape heuristic.
+- The shape test is deliberately conservative, so it has a false-negative
+  band: a strip taller than a quarter of its tile's width, or offset more
+  than 8 pt from the tile's top edge (the revealed position of auto-hiding
+  chrome sliding in under the menu bar), is not recognized, and resolution
+  proceeds exactly as before the guard — the pre-BUG-7 symptom can recur
+  there. No known real pairing reaches the band (tall compound chrome like
+  Safari's belongs to apps whose own minimum window widths keep tiles ≥ 4×
+  the strip; apps that shrink to the ~322 pt Split View minimum carry only
+  ~52–80 pt accessories), and it must not be closed by loosening: relaxing
+  4:1 toward 3:1 re-admits the ~3:1 copy-progress panel, and widening the
+  8 pt anchor toward sheet offsets re-admits sheets.
 
 ---
 
