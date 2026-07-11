@@ -76,10 +76,13 @@ class PrefsWindowController: NSWindowController {
         window.title = "Alan Settings"
         window.isReleasedWhenClosed = false
         self.init(window: window)
-        window.center()
 
         buildUI()
         loadValues()
+        // Center only after buildUI has settled the window's final height —
+        // setContentSize keeps the frame origin, so centering first would
+        // leave a grown window sitting low on the screen.
+        window.center()
 
         NotificationCenter.default.addObserver(
             self,
@@ -126,7 +129,7 @@ class PrefsWindowController: NSWindowController {
     }
 
     private func buildUI() {
-        guard let contentView = window?.contentView else { return }
+        guard let window, let contentView = window.contentView else { return }
 
         let tabView = NSTabView()
         tabView.translatesAutoresizingMaskIntoConstraints = false
@@ -138,20 +141,52 @@ class PrefsWindowController: NSWindowController {
             tabView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12)
         ])
 
+        let appearanceView = makeAppearanceTab()
+        let behaviorView = makeBehaviorTab()
+        let excludedAppsView = makeExcludedAppsTab()
+
+        // How tall does the window need to be? The window was born at a fixed
+        // height while the Behavior tab kept growing a row per feature, until
+        // its bottom settings were clipped — and the window isn't resizable,
+        // so there was no way to reach them. Ask each tab for the height its
+        // own constraints require and size the window to the tallest, so a
+        // future row stretches the window instead of falling off the bottom.
+        // Measured while the views are still detached: each tab's bottom
+        // spacing constraint makes fittingSize meaningful, whereas once a
+        // view is installed the tab view pins its frame via autoresizing and
+        // fittingSize would just echo the frame back. (The Excluded Apps tab
+        // measures short — its scroll view has no intrinsic height and simply
+        // fills whatever the others need.)
+        let tallestTab = [appearanceView, behaviorView, excludedAppsView]
+            .map { $0.fittingSize.height }
+            .max() ?? 0
+
         let appearance = NSTabViewItem(identifier: "appearance")
         appearance.label = "Appearance"
-        appearance.view = makeAppearanceTab()
+        appearance.view = appearanceView
         tabView.addTabViewItem(appearance)
 
         let behavior = NSTabViewItem(identifier: "behavior")
         behavior.label = "Behavior"
-        behavior.view = makeBehaviorTab()
+        behavior.view = behaviorView
         tabView.addTabViewItem(behavior)
 
         let apps = NSTabViewItem(identifier: "apps")
         apps.label = "Excluded Apps"
-        apps.view = makeExcludedAppsTab()
+        apps.view = excludedAppsView
         tabView.addTabViewItem(apps)
+
+        // Realize the tab chrome (tab bar + padding) at the placeholder
+        // height, then grow the window by whatever the tallest tab still
+        // lacks. The placeholder height stays as a floor: a shrunken tab set
+        // never shrinks the window below it.
+        contentView.layoutIfNeeded()
+        let shortfall = (tallestTab - tabView.contentRect.height).rounded(.up)
+        if shortfall > 0 {
+            var size = contentView.frame.size
+            size.height += shortfall
+            window.setContentSize(size)
+        }
     }
 
     // MARK: Appearance tab
@@ -226,6 +261,15 @@ class PrefsWindowController: NSWindowController {
         grid.column(at: 0).xPlacement = .trailing
         view.addSubview(grid)
 
+        // Requires the tab to be at least tall enough for its content — this
+        // is what buildUI's fittingSize measurement reads when it sizes the
+        // window, and what keeps the grid clear of the bottom edge. Priority
+        // 999, not required: during buildUI's first layout pass the window is
+        // still at its placeholder height, where a required version would be
+        // momentarily unsatisfiable and log an Auto Layout break.
+        let gridBottom = grid.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -16)
+        gridBottom.priority = NSLayoutConstraint.Priority(999)
+
         NSLayoutConstraint.activate([
             previewView.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
             previewView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
@@ -235,7 +279,8 @@ class PrefsWindowController: NSWindowController {
             // edge instead of being hard-clipped into a squared-off halo.
             previewView.heightAnchor.constraint(equalToConstant: 190),
             grid.topAnchor.constraint(equalTo: previewView.bottomAnchor, constant: 16),
-            grid.centerXAnchor.constraint(equalTo: view.centerXAnchor)
+            grid.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            gridBottom
         ])
 
         return view
@@ -330,10 +375,20 @@ class PrefsWindowController: NSWindowController {
         stack.spacing = 12
         view.addSubview(stack)
 
+        // Requires the tab to be at least tall enough for its content — this
+        // is what buildUI's fittingSize measurement reads when it sizes the
+        // window. Its absence is how the tab's growth went unnoticed: rows
+        // were added below a fixed-height window's edge with nothing to push
+        // back. Priority 999 for the same reason as the Appearance tab's:
+        // required would momentarily break at the placeholder height.
+        let stackBottom = stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -20)
+        stackBottom.priority = NSLayoutConstraint.Priority(999)
+
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -24),
+            stackBottom,
             divider.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
 

@@ -480,6 +480,31 @@ covered) and enables PERF-7.
 **Resolution:** ⏸️ Deferred — broad cross-file refactor with wide merge surface;
 higher value once UX-7's tests exist to catch regressions.
 
+### UX-11 · Settings window has a fixed height; grown tabs clip at the bottom
+*sev medium / conf high / [dev]*
+**Where:** `PrefsWindowController.swift` — the 520×560 `contentRect` in the
+convenience init; `makeBehaviorTab`/`makeAppearanceTab` content pinned only
+to the top of the tab view.
+**Problem:** The window is born at a fixed 560 pt and isn't resizable, while
+the Behavior tab gained a row per feature (find-animation picker, warp
+cursor, show-in-screenshots, focus trail, focus chip…). The tab stacks had
+no bottom constraint, so nothing pushed back: the newest rows simply slid
+below the window's bottom edge — reported with "Launch Alan at login"
+half-clipped.
+**Fix (implemented this pass):** each tab now carries a ≤-bottom-spacing
+constraint (priority 999, so the placeholder-height first layout pass can't
+log a break), which both keeps content clear of the edge and makes
+`fittingSize` meaningful; `buildUI` measures each tab's fitting height while
+the views are still detached (installed views echo their autoresizing frame
+back), realizes the tab chrome with one layout pass, and grows the window by
+the tallest tab's shortfall over the content area (the 560 pt placeholder
+stays as a floor). A future row now stretches the window instead of falling
+off the bottom. `window.center()` moved after `buildUI()` so the final
+height is what gets centered.
+**Resolution:** ✅ Implemented → `claude/alan-window-highlighting-qngnkr`.
+Worth a glance on device: the computed height should show all Behavior rows
+with normal breathing room below the divider.
+
 ### UX-10 · No localization
 *sev low / conf high*
 **Where:** no `.strings`/`.xcstrings`; literals in `AppDelegate`, all of
