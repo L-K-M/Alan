@@ -623,6 +623,10 @@ class PrefsWindowController: NSWindowController {
         }
 
         previewView.needsDisplay = true
+        // Whether the preview needs a redraw timer at all depends on settings
+        // (party mode, animated border styles), so re-evaluate it here rather
+        // than leaving a 30 Hz timer running over a static picture.
+        previewView.refreshAnimationState()
     }
 
     // MARK: - Actions
@@ -920,9 +924,29 @@ final class BorderPreviewView: NSView {
 
     private var redrawTimer: Timer?
     private var occlusionObserver: NSObjectProtocol?
+    private var windowIsVisible = false
+    // The last wobble seed actually repainted for, so hand-drawn ticks that
+    // wouldn't change the sketch can skip the redraw.
+    private var lastWobbleSeed: Int?
 
-    // Party mode cycles and per-app colors change without defaults
-    // notifications, so the preview repaints on a timer while it's on screen.
+    // Whether anything the preview draws actually changes over time. Party
+    // mode cycles its hue from the wall clock, and marching ants / the
+    // hand-drawn wobble derive their phase and seed the same way. *Everything*
+    // else — width, inset, radius, style, colors, glow, shadow, the spotlight
+    // dim — changes only on a defaults write, and syncDynamicUI() already
+    // repaints the preview for each of those. Under Reduce Motion all three
+    // render statically (a frozen hue, phase 0, seed 0), so nothing animates
+    // there either. Mirrors FocusHighlighter.borderStyleNeedsAnimation plus
+    // the party-mode branch of HighlightWindow.setPartyMode.
+    private static var needsAnimation: Bool {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return false }
+        if UserDefaults.standard.bool(forKey: Key.partyMode) { return true }
+        switch BorderStyle.current {
+        case .ants, .handDrawn: return true
+        case .solid, .dashed, .corners: return false
+        }
+    }
+
     // The timer is *started and stopped* by the window's occlusion state, not
     // left running with an isVisible guard in its body: the Settings window is
     // isReleasedWhenClosed = false and only ordered out on close, so this view
@@ -939,6 +963,7 @@ final class BorderPreviewView: NSView {
         }
 
         guard let window else {
+            windowIsVisible = false
             stopRedrawTimer()
             return
         }
@@ -955,13 +980,40 @@ final class BorderPreviewView: NSView {
     }
 
     private func updateRedrawTimer(visible: Bool) {
-        visible ? startRedrawTimer() : stopRedrawTimer()
+        windowIsVisible = visible
+        refreshAnimationState()
+    }
+
+    // Start or stop the redraw timer to match what the preview currently shows.
+    // Called on every occlusion change and from syncDynamicUI(), which runs on
+    // every defaults change — so toggling party mode or picking an animated
+    // border style starts the timer, and leaving them stops it again.
+    func refreshAnimationState() {
+        if windowIsVisible, BorderPreviewView.needsAnimation {
+            startRedrawTimer()
+        } else {
+            stopRedrawTimer()
+        }
     }
 
     private func startRedrawTimer() {
         guard redrawTimer == nil else { return }
+        lastWobbleSeed = nil
         let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
-            self?.needsDisplay = true
+            guard let self else { return }
+            // The hand-drawn wobble re-seeds only ~3×/s, so 27 of every 30
+            // ticks would regenerate a pixel-identical sketch and re-stroke it
+            // — including the CPU Gaussian passes when glow or the stronger
+            // shadow is on. Same gate HighlightWindow.setBorderStyleAnimating
+            // applies to the live overlay. Party mode is exempt: its hue moves
+            // every tick.
+            if !UserDefaults.standard.bool(forKey: Key.partyMode),
+               BorderStyle.current == .handDrawn {
+                let seed = HighlightView.currentWobbleSeed()
+                guard seed != self.lastWobbleSeed else { return }
+                self.lastWobbleSeed = seed
+            }
+            self.needsDisplay = true
         }
         timer.tolerance = (1.0 / 30.0) * 0.1
         RunLoop.current.add(timer, forMode: .common)
@@ -971,6 +1023,7 @@ final class BorderPreviewView: NSView {
     private func stopRedrawTimer() {
         redrawTimer?.invalidate()
         redrawTimer = nil
+        lastWobbleSeed = nil
     }
 
     deinit {
