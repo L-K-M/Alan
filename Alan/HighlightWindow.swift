@@ -643,6 +643,9 @@ class GhostBorderWindow: NSWindow {
                 guard let self, self.generation == gen else { return }
                 self.fadeTimer = nil
                 self.orderOut(nil)
+                // Nothing lowers alpha on this path today, but leaving it at a
+                // known 1 keeps every exit from this window consistent.
+                self.alphaValue = 1
             }
             RunLoop.current.add(timer, forMode: .common)
             fadeTimer = timer
@@ -669,7 +672,11 @@ class GhostBorderWindow: NSWindow {
                 self.orderOut(nil)
                 self.alphaValue = 1
             } else {
-                self.alphaValue = CGFloat(1 - t)
+                // Smoothstep for the same reason as FocusChipWindow.startFade:
+                // it matches NSAnimationContext's default ease-in-ease-out, so
+                // the fix doesn't quietly change the trail's feel — which is
+                // more noticeable here, over the longer trail duration.
+                self.alphaValue = CGFloat(1 - t * t * (3 - 2 * t))
             }
         }
         RunLoop.current.add(timer, forMode: .common)

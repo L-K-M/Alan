@@ -167,7 +167,10 @@ class FocusChipWindow: NSWindow {
                 self.orderOut(nil)
                 self.alphaValue = 1
             } else {
-                self.alphaValue = CGFloat(1 - t)
+                // Smoothstep, not a linear ramp: NSAnimationContext's default
+                // timing is ease-in-ease-out, and the point of this rewrite is
+                // to fix the race without changing how the fade feels.
+                self.alphaValue = CGFloat(1 - t * t * (3 - 2 * t))
             }
         }
         RunLoop.current.add(timer, forMode: .common)
