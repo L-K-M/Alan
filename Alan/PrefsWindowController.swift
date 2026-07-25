@@ -73,6 +73,21 @@ class PrefsWindowController: NSWindowController {
     private var launchAtLoginEnabled = false
     private var syncScheduled = false
 
+    // Kept so the window can be re-fitted after the Behavior tab's content
+    // height changes — which it can, once, when the Reduce Motion note appears
+    // while the window is already open. buildUI's own measurement can't be
+    // repeated: it reads each tab's fittingSize *before* installation, and an
+    // installed tab view pins its view's frame by autoresizing so fittingSize
+    // would just echo the frame back. The stack is constraint-driven, so its
+    // fittingSize stays meaningful for as long as it exists.
+    private weak var tabView: NSTabView?
+    private weak var behaviorStack: NSStackView?
+
+    // The Behavior tab's stack insets, shared between the layout that applies
+    // them and the re-fit that has to account for them.
+    private static let behaviorTabTopInset: CGFloat = 20
+    private static let behaviorTabBottomInset: CGFloat = 20
+
     // MARK: - Setup
 
     convenience init() {
@@ -152,6 +167,7 @@ class PrefsWindowController: NSWindowController {
         guard let window, let contentView = window.contentView else { return }
 
         let tabView = NSTabView()
+        self.tabView = tabView
         tabView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(tabView)
         NSLayoutConstraint.activate([
@@ -207,6 +223,35 @@ class PrefsWindowController: NSWindowController {
             size.height += shortfall
             window.setContentSize(size)
         }
+    }
+
+    // Grow the window if the Behavior tab's content has outgrown the area the
+    // tab view gives it. buildUI sizes the window once, from each tab's
+    // fittingSize measured while the views are still detached; that measurement
+    // can't be repeated afterwards, because an installed tab view pins its
+    // view's frame by autoresizing and fittingSize would echo the frame back.
+    // The stack itself is constraint-driven, though, so its fittingSize stays
+    // meaningful — which is enough for the one case that can change the content
+    // height after the fact: the Reduce Motion note appearing while the window
+    // is already open.
+    //
+    // Only ever grows, matching buildUI's "the placeholder height is a floor"
+    // rule: a tab that shrinks again leaves the extra room rather than making
+    // the window jump around under the user.
+    private func growWindowIfBehaviorTabOverflows() {
+        guard let window, let contentView = window.contentView,
+              let tabView, let behaviorStack else { return }
+
+        contentView.layoutSubtreeIfNeeded()
+        let needed = behaviorStack.fittingSize.height
+            + Self.behaviorTabTopInset
+            + Self.behaviorTabBottomInset
+        let shortfall = (needed - tabView.contentRect.height).rounded(.up)
+        guard shortfall > 0 else { return }
+
+        var size = contentView.frame.size
+        size.height += shortfall
+        window.setContentSize(size)
     }
 
     // MARK: Appearance tab
@@ -431,6 +476,7 @@ class PrefsWindowController: NSWindowController {
         }
 
         let stack = NSStackView(views: arranged)
+        behaviorStack = stack
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -453,11 +499,14 @@ class PrefsWindowController: NSWindowController {
         // were added below a fixed-height window's edge with nothing to push
         // back. Priority 999 for the same reason as the Appearance tab's:
         // required would momentarily break at the placeholder height.
-        let stackBottom = stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -20)
+        let stackBottom = stack.bottomAnchor.constraint(
+            lessThanOrEqualTo: view.bottomAnchor,
+            constant: -Self.behaviorTabBottomInset
+        )
         stackBottom.priority = NSLayoutConstraint.Priority(999)
 
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: Self.behaviorTabTopInset),
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -24),
             stackBottom
@@ -691,6 +740,12 @@ class PrefsWindowController: NSWindowController {
             : "Outline the border in the opposite tone, so it stays visible against content of a similar color."
 
         reduceMotionNote.isHidden = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        // Turning Reduce Motion on in System Settings while this window is
+        // already open adds a row to the tallest tab after buildUI has sized
+        // the window — and the stack's bottom constraint is only a ≤ at
+        // priority 999, so the overflow would simply be clipped, hiding the
+        // very note that explains what just changed.
+        growWindowIfBehaviorTabOverflows()
 
         animateMovementCheckbox.state = defaults.bool(forKey: Key.animateMovement) ? .on : .off
         glideDurationSlider.isEnabled = defaults.bool(forKey: Key.animateMovement)
