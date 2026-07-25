@@ -716,17 +716,27 @@ class PrefsWindowController: NSWindowController {
         let perAppReason = "Per-app border colors are choosing the border color."
         let accentReason = "The system accent color is choosing the border color."
 
+        // Each explanation goes to both toolTip and accessibilityHelp: VoiceOver
+        // does not read a tooltip when navigating to a control, so a tooltip
+        // alone would leave the precedence chain visible only to people who can
+        // see it and think to hover — and the greyed-out control they land on
+        // is exactly the one that needs explaining.
+        let perAppReasonNow = partyOn ? partyReason : nil
         perAppColorsCheckbox.isEnabled = !partyOn
-        perAppColorsCheckbox.toolTip = partyOn ? partyReason : nil
+        perAppColorsCheckbox.toolTip = perAppReasonNow
+        perAppColorsCheckbox.setAccessibilityHelp(perAppReasonNow)
 
+        let accentReasonNow = partyOn ? partyReason : (perAppOn ? perAppReason : nil)
         useAccentColorCheckbox.isEnabled = !partyOn && !perAppOn
-        useAccentColorCheckbox.toolTip = partyOn ? partyReason : (perAppOn ? perAppReason : nil)
+        useAccentColorCheckbox.toolTip = accentReasonNow
+        useAccentColorCheckbox.setAccessibilityHelp(accentReasonNow)
 
         let wellsReason: String? = partyOn ? partyReason
             : (perAppOn ? perAppReason : (accentOn ? accentReason : nil))
         for well in [lightModeColorWell, darkModeColorWell] {
             well.isEnabled = (wellsReason == nil)
             well.toolTip = wellsReason
+            well.setAccessibilityHelp(wellsReason)
         }
 
         if let styleIndex = BorderStyle.allCases.firstIndex(of: BorderStyle.current) {
@@ -745,9 +755,11 @@ class PrefsWindowController: NSWindowController {
         let increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         contrastCasingCheckbox.state = (increaseContrast || defaults.bool(forKey: Key.contrastCasing)) ? .on : .off
         contrastCasingCheckbox.isEnabled = !increaseContrast
-        contrastCasingCheckbox.toolTip = increaseContrast
+        let casingHelp = increaseContrast
             ? "The system Increase Contrast setting keeps this on."
             : "Outline the border in the opposite tone, so it stays visible against content of a similar color."
+        contrastCasingCheckbox.toolTip = casingHelp
+        contrastCasingCheckbox.setAccessibilityHelp(casingHelp)
 
         reduceMotionNote.isHidden = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         // Turning Reduce Motion on in System Settings while this window is
@@ -776,9 +788,11 @@ class PrefsWindowController: NSWindowController {
         // The pulse animates the border, which spotlight mode replaces, so
         // the checkbox would be a silent no-op while spotlight is on.
         focusPulseCheckbox.isEnabled = !spotlightOn
-        focusPulseCheckbox.toolTip = spotlightOn
+        let pulseReason = spotlightOn
             ? "Spotlight mode replaces the border, so there is no border to pulse."
             : nil
+        focusPulseCheckbox.toolTip = pulseReason
+        focusPulseCheckbox.setAccessibilityHelp(pulseReason)
 
         // While spotlight is on, the preview shows the dimming and says why.
         spotlightPreviewHint.isHidden = !spotlightOn
@@ -1254,6 +1268,7 @@ final class ShortcutRecorderButton: NSButton {
         if isRecording {
             title = "Type shortcut…"
             toolTip = nil
+            setAccessibilityHelp(nil)
             return
         }
         let label = UserDefaults.standard.string(forKey: Key.findMyWindowShortcutLabel)
@@ -1265,6 +1280,7 @@ final class ShortcutRecorderButton: NSButton {
             title = label
             toolTip = nil
         }
+        setAccessibilityHelp(toolTip)
     }
 
     // Cancel an in-progress recording (e.g. the window is closing) so the
