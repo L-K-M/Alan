@@ -548,6 +548,13 @@ class PrefsWindowController: NSWindowController {
     private func syncDynamicUI() {
         let defaults = UserDefaults.standard
 
+        // Re-read the stored colors, not just at init: "Restore Defaults" (and
+        // any external `defaults write`) changes them behind this window's
+        // back, and a stale well isn't merely cosmetic — the next click on it
+        // would write the stale color straight back over the restored one.
+        lightModeColorWell.color = defaults.color(forKey: Key.lightMode) ?? Defaults.lightModeColor
+        darkModeColorWell.color = defaults.color(forKey: Key.darkMode) ?? Defaults.darkModeColor
+
         showWhileDraggingCheckbox.state = defaults.bool(forKey: Key.showFrameWhileDragging) ? .on : .off
         hideWhenMaximizedCheckbox.state = defaults.bool(forKey: Key.hideBorderWhenMaximized) ? .on : .off
         focusPulseCheckbox.state = defaults.bool(forKey: Key.focusPulse) ? .on : .off

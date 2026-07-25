@@ -19,17 +19,71 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var statusItem: NSStatusItem?
     private var pauseMenuItem: NSMenuItem?
+    private var spotlightMenuItem: NSMenuItem?
     private var excludeMenuItem: NSMenuItem?
     private var hideDockMenuItem: NSMenuItem?
+    private var checkUpdatesMenuItem: NSMenuItem?
+    // True while an update request is in flight, so the menu can say so and a
+    // second click can't stack another alert behind the first.
+    private var isCheckingForUpdates = false
     // Re-entrancy guard for the trust-loss alert: trust can flap while the
     // modal re-grant flow is already on screen, and a second modal session
     // nested inside the first would wedge both.
     private var handlingTrustLoss = false
 
-    func applicationDidFinishLaunching(_ aNotification: Notification) {
+    // Keys AppDelegate owns the response to, rather than FocusHighlighter (see
+    // Key.allObservedKeys): the activation policy and the status item's
+    // appearance are the app's business, not the highlighter's.
+    private static let observedKeys = [Key.hideDock, Key.paused]
 
-        // Colors aren't registered here: NSColor isn't a property-list type,
-        // so they are defaulted at the read sites instead.
+    // Registration and the activation policy both belong *before* the app is
+    // presented. Setting the policy in didFinishLaunching meant a Dock-hiding
+    // Alan was born .regular and only became .accessory afterwards — so every
+    // login flashed a Dock icon that then vanished. (LSUIElement in the plist
+    // isn't an option: the policy has to stay switchable at runtime, which is
+    // the whole point of the live Hide Dock Icon toggle.)
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        registerDefaults()
+        applyActivationPolicy()
+
+        // External writes to these keys — `defaults write`, a Shortcut, a
+        // Stream Deck button — should apply live, exactly like every other key
+        // in the domain. KVO, not UserDefaults.didChangeNotification, because
+        // only KVO fires for changes made by another process.
+        for key in Self.observedKeys {
+            UserDefaults.standard.addObserver(self, forKeyPath: key, options: [], context: nil)
+        }
+    }
+
+    override func observeValue(
+        forKeyPath keyPath: String?,
+        of object: Any?,
+        change: [NSKeyValueChangeKey: Any]?,
+        context: UnsafeMutableRawPointer?
+    ) {
+        // External changes can be delivered off the main thread; hop over.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            switch keyPath {
+            case Key.hideDock:
+                self.applyActivationPolicy()
+            case Key.paused:
+                self.updateStatusItemAppearance()
+            default:
+                break
+            }
+        }
+    }
+
+    // Alan restores no window state, so the answer is unambiguous — and
+    // without it macOS 14+ logs a secure-coding warning on every launch.
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        true
+    }
+
+    // Colors aren't registered here: NSColor isn't a property-list type, so
+    // they are defaulted at the read sites instead.
+    private func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             Key.width: 5,
             Key.inset: 4,
@@ -53,9 +107,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Key.paused: false,
             Key.borderStyle: BorderStyle.solid.rawValue
         ])
+    }
 
-        applyActivationPolicy()
-
+    func applicationDidFinishLaunching(_ aNotification: Notification) {
         // The status item now exists in every mode, not just hidden-Dock —
         // it's the home for Pause, "Exclude this app", and Settings, and the
         // only way to reach them when the Dock icon is hidden.
@@ -96,8 +150,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // In accessory mode the app has no Dock icon or menu bar; in regular mode
-    // it has both (plus the status item). Read once at launch, re-applied live
-    // by toggleHideDock.
+    // it has both (plus the status item). Applied before the app is presented,
+    // then re-applied live by toggleHideDock and by the KVO observation above
+    // (which is what makes an external `defaults write hideDock` take effect
+    // without a relaunch). Idempotent — setting the current policy is a no-op.
     private func applyActivationPolicy() {
         NSApp.setActivationPolicy(UserDefaults.standard.bool(forKey: Key.hideDock) ? .accessory : .regular)
     }
@@ -116,46 +172,67 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // auto-disable the items we manage by hand.
         menu.autoenablesItems = false
 
-        let pause = NSMenuItem(title: "Pause Alan", action: #selector(togglePause(_:)), keyEquivalent: "")
-        pause.target = self
-        menu.addItem(pause)
-        pauseMenuItem = pause
-
-        let exclude = NSMenuItem(title: "Exclude Frontmost App", action: #selector(excludeFrontmostApp(_:)), keyEquivalent: "")
-        exclude.target = self
-        menu.addItem(exclude)
-        excludeMenuItem = exclude
+        // The status item is the app's primary interface — and in hidden-Dock
+        // mode, its only one. The three things a user reaches for situationally
+        // (am I on? dim everything; where is my window?) sit at the top, ahead
+        // of the per-app and configuration items.
+        pauseMenuItem = addItem(to: menu, title: "Pause Alan", action: #selector(togglePause(_:)))
+        spotlightMenuItem = addItem(to: menu, title: "Spotlight Mode", action: #selector(toggleSpotlightMode(_:)))
+        // Reachable without having enabled and learned a chord — which is also
+        // what makes the hotkey preference discoverable in the first place.
+        addItem(to: menu, title: "Find My Window", action: #selector(findMyWindow(_:)))
 
         menu.addItem(.separator())
 
-        let settings = NSMenuItem(title: "Settings…", action: #selector(showPrefs(_:)), keyEquivalent: ",")
-        settings.target = self
-        menu.addItem(settings)
+        excludeMenuItem = addItem(to: menu, title: "Exclude Frontmost App",
+                                  action: #selector(toggleExcludeFrontmostApp(_:)))
 
-        let hideDock = NSMenuItem(title: "Hide Dock Icon", action: #selector(toggleHideDock(_:)), keyEquivalent: "")
-        hideDock.target = self
-        menu.addItem(hideDock)
-        hideDockMenuItem = hideDock
+        menu.addItem(.separator())
 
-        let about = NSMenuItem(title: "About Alan", action: #selector(showAbout(_:)), keyEquivalent: "")
-        about.target = self
-        menu.addItem(about)
+        addItem(to: menu, title: "Settings…", action: #selector(showPrefs(_:)), keyEquivalent: ",")
+        hideDockMenuItem = addItem(to: menu, title: "Hide Dock Icon", action: #selector(toggleHideDock(_:)))
+        addItem(to: menu, title: "Restore Defaults…", action: #selector(restoreDefaults(_:)))
 
-        let checkUpdates = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
-        checkUpdates.target = self
-        menu.addItem(checkUpdates)
+        menu.addItem(.separator())
+
+        addItem(to: menu, title: "About Alan", action: #selector(showAbout(_:)))
+        checkUpdatesMenuItem = addItem(to: menu, title: "Check for Updates…",
+                                       action: #selector(checkForUpdates(_:)))
+        addItem(to: menu, title: "Alan on GitHub…", action: #selector(openProjectPage(_:)))
 
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Alan", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         item.menu = menu
         statusItem = item
+        updateStatusItemAppearance()
+    }
+
+    @discardableResult
+    private func addItem(to menu: NSMenu, title: String, action: Selector, keyEquivalent: String = "") -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
+        item.target = self
+        menu.addItem(item)
+        return item
+    }
+
+    // Paused used to be invisible from outside the menu: the icon looked
+    // identical either way, so the natural reaction to "my borders are gone" —
+    // glancing at the menu bar — told the user nothing. Dim the item the way
+    // macOS dims an inactive menu extra, and say so on hover.
+    private func updateStatusItemAppearance() {
+        guard let button = statusItem?.button else { return }
+        let paused = UserDefaults.standard.bool(forKey: Key.paused)
+        button.appearsDisabled = paused
+        button.toolTip = paused ? "Alan is paused — no border is being drawn." : "Alan"
     }
 
     // MARK: - Status menu
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        pauseMenuItem?.title = UserDefaults.standard.bool(forKey: Key.paused) ? "Resume Alan" : "Pause Alan"
+        let defaults = UserDefaults.standard
+        pauseMenuItem?.title = defaults.bool(forKey: Key.paused) ? "Resume Alan" : "Pause Alan"
+        spotlightMenuItem?.state = defaults.bool(forKey: Key.spotlightMode) ? .on : .off
 
         // The frontmost app is the one the user was in before clicking the
         // status item (opening a status menu doesn't change frontmost).
@@ -163,9 +240,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
            app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
            let bundleID = app.bundleIdentifier {
             let name = app.localizedName ?? bundleID
-            let excluded = UserDefaults.standard.stringArray(forKey: Key.excludedApps) ?? []
-            excludeMenuItem?.title = "Exclude “\(name)”"
-            excludeMenuItem?.isEnabled = !excluded.contains(bundleID)
+            let excluded = defaults.stringArray(forKey: Key.excludedApps) ?? []
+            // A toggle, not a one-way door. Excluding is one click; un-excluding
+            // used to mean opening Settings, finding the Excluded Apps tab and
+            // finding the row — for something the menu itself had just done.
+            excludeMenuItem?.title = excluded.contains(bundleID)
+                ? "Include “\(name)”"
+                : "Exclude “\(name)”"
+            excludeMenuItem?.isEnabled = true
             excludeMenuItem?.representedObject = bundleID
         } else {
             excludeMenuItem?.title = "Exclude Frontmost App"
@@ -173,7 +255,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             excludeMenuItem?.representedObject = nil
         }
 
-        hideDockMenuItem?.state = UserDefaults.standard.bool(forKey: Key.hideDock) ? .on : .off
+        hideDockMenuItem?.state = defaults.bool(forKey: Key.hideDock) ? .on : .off
+
+        // A check can take up to the request's 15 s timeout; say so rather than
+        // letting the menu close on a click that appears to do nothing.
+        checkUpdatesMenuItem?.title = isCheckingForUpdates
+            ? "Checking for Updates…"
+            : "Check for Updates…"
+        checkUpdatesMenuItem?.isEnabled = !isCheckingForUpdates
     }
 
     @objc private func togglePause(_ sender: Any?) {
@@ -182,12 +271,68 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // FocusHighlighter observes the defaults change and hides/restores.
     }
 
-    @objc private func excludeFrontmostApp(_ sender: NSMenuItem) {
+    @objc private func toggleSpotlightMode(_ sender: Any?) {
+        let on = UserDefaults.standard.bool(forKey: Key.spotlightMode)
+        UserDefaults.standard.set(!on, forKey: Key.spotlightMode)
+        // FocusHighlighter observes the defaults change and switches modes.
+    }
+
+    // Works while paused too — flashBorder is deliberately left running there,
+    // so "where is my window?" is answerable without resuming.
+    @objc private func findMyWindow(_ sender: Any?) {
+        FocusHighlighter.shared.flashBorder()
+    }
+
+    @objc private func toggleExcludeFrontmostApp(_ sender: NSMenuItem) {
         guard let bundleID = sender.representedObject as? String else { return }
         var excluded = UserDefaults.standard.stringArray(forKey: Key.excludedApps) ?? []
-        guard !excluded.contains(bundleID) else { return }
-        excluded.append(bundleID)
+        if let index = excluded.firstIndex(of: bundleID) {
+            excluded.remove(at: index)
+        } else {
+            excluded.append(bundleID)
+        }
         UserDefaults.standard.set(excluded, forKey: Key.excludedApps)
+    }
+
+    @objc private func openProjectPage(_ sender: Any?) {
+        NSWorkspace.shared.open(AppDelegate.projectPageURL)
+    }
+
+    private static let projectPageURL = URL(string: "https://github.com/L-K-M/Alan")!
+
+    // Twenty-odd settings, several of which (party mode, an extreme dim level,
+    // a wide glowing border) can leave Alan looking broken — and the only way
+    // back was `defaults delete studio.retina.Alan` in a terminal, which also
+    // silently takes the excluded-apps list with it. Removing the keys lets the
+    // values registered at launch take over again.
+    @objc private func restoreDefaults(_ sender: Any?) {
+        NSApp.activate()
+
+        let excludedCount = (UserDefaults.standard.stringArray(forKey: Key.excludedApps) ?? []).count
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Restore Alan’s default settings?"
+        var info = "Every appearance and behavior setting goes back to how Alan shipped. This can’t be undone."
+        if excludedCount > 0 {
+            info += excludedCount == 1
+                ? "\n\nThe app on your excluded list will be removed from it as well."
+                : "\n\nThe \(excludedCount) apps on your excluded list will be removed from it as well."
+        }
+        alert.informativeText = info
+        // Cancel is the default (bound to Return): the destructive button must
+        // not be what a reflexive Return press hits.
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Restore Defaults")
+        guard alert.runModal() == .alertSecondButtonReturn else { return }
+
+        for key in Key.allStoredKeys {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        // Launch at login lives in SMAppService, not in the defaults domain, so
+        // it is deliberately untouched — silently un-registering a login item
+        // is not something a settings reset should do behind the user's back.
+        applyActivationPolicy()
+        FocusHighlighter.shared.forceUpdate()
     }
 
     @objc private func toggleHideDock(_ sender: Any?) {
@@ -210,8 +355,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // reporting the result. Explicit "up to date" feedback is the point of the
     // manual item — a silent check would leave the user unsure it did anything.
     @objc private func checkForUpdates(_ sender: Any?) {
+        // A slow network can hold the request for its full 15 s timeout, during
+        // which the menu has closed and nothing has visibly happened. Drop
+        // re-entrant clicks (three impatient ones used to queue three modal
+        // alerts) and let menuNeedsUpdate report the in-flight state.
+        guard !isCheckingForUpdates else { return }
+        isCheckingForUpdates = true
         UpdateChecker.check { [weak self] outcome in
-            self?.presentUpdateOutcome(outcome)
+            guard let self else { return }
+            self.isCheckingForUpdates = false
+            self.presentUpdateOutcome(outcome)
         }
     }
 
