@@ -424,11 +424,18 @@ class PrefsWindowController: NSWindowController {
             // A wrapping label has an enormous intrinsic width; pin it so it
             // wraps inside the tab instead of widening the stack past it.
             //
-            // A constant rather than a relation to the stack: the note is one
-            // of the stack's own arranged subviews, so `≤ stack.widthAnchor`
-            // would make the stack's width depend on a child whose width
-            // depends on the stack — circular, and resolved by Auto Layout in
-            // whichever way it likes. The constant is derived, not magic: the
+            // A constant rather than a relation to any other view, for two
+            // reasons. Against the *stack* it would be circular: the note is
+            // one of the stack's own arranged subviews, so the stack's width
+            // would depend on a child whose width depends on the stack, and
+            // Auto Layout would resolve that however it liked. Against the
+            // *tab view* it would be unconstrained exactly when it matters:
+            // buildUI measures each tab's fittingSize while the view is still
+            // detached and has no width of its own, so a ≤ relation would let
+            // this label report its enormous intrinsic width and corrupt the
+            // measurement the whole window height is derived from.
+            //
+            // The constant is derived, not magic: the
             // window is a fixed 520 pt wide (it isn't resizable, and the
             // re-fit below only ever changes height), less 24 pt of window
             // insets, ~14 pt of tab-view chrome and 48 pt of stack insets,
