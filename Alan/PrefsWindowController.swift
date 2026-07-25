@@ -49,6 +49,7 @@ class PrefsWindowController: NSWindowController {
     private let showInScreenshotsCheckbox = NSButton(checkboxWithTitle: "Show overlays in screenshots and recordings", target: nil, action: nil)
     private let focusTrailCheckbox = NSButton(checkboxWithTitle: "Focus trail — fade a ghost border on the window you left", target: nil, action: nil)
     private let showFocusChipCheckbox = NSButton(checkboxWithTitle: "Show a chip (app icon + name) on focus change", target: nil, action: nil)
+    private let autoCheckUpdatesCheckbox = NSButton(checkboxWithTitle: "Check for updates automatically", target: nil, action: nil)
     private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: "Launch Alan at login", target: nil, action: nil)
 
     // MARK: - Excluded-apps tab controls
@@ -303,6 +304,8 @@ class PrefsWindowController: NSWindowController {
         setUp(showInScreenshotsCheckbox, action: #selector(showInScreenshotsChanged(_:)))
         setUp(focusTrailCheckbox, action: #selector(focusTrailChanged(_:)))
         setUp(showFocusChipCheckbox, action: #selector(showFocusChipChanged(_:)))
+        setUp(autoCheckUpdatesCheckbox, action: #selector(autoCheckUpdatesChanged(_:)))
+        autoCheckUpdatesCheckbox.toolTip = "Once a week, quietly ask GitHub whether a newer release exists. Nothing is reported unless there is one."
         setUp(launchAtLoginCheckbox, action: #selector(launchAtLoginChanged(_:)))
 
         glideDurationSlider.translatesAutoresizingMaskIntoConstraints = false
@@ -367,6 +370,7 @@ class PrefsWindowController: NSWindowController {
             focusTrailCheckbox,
             showFocusChipCheckbox,
             divider,
+            autoCheckUpdatesCheckbox,
             launchAtLoginCheckbox
         ])
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -573,6 +577,7 @@ class PrefsWindowController: NSWindowController {
         glowingBorderCheckbox.state = defaults.bool(forKey: Key.glowingBorder) ? .on : .off
         strongerShadowCheckbox.state = defaults.bool(forKey: Key.strongerShadow) ? .on : .off
         partyModeCheckbox.state = defaults.bool(forKey: Key.partyMode) ? .on : .off
+        autoCheckUpdatesCheckbox.state = defaults.bool(forKey: Key.autoCheckUpdates) ? .on : .off
         launchAtLoginCheckbox.state = launchAtLoginEnabled ? .on : .off
 
         animateMovementCheckbox.state = defaults.bool(forKey: Key.animateMovement) ? .on : .off
@@ -711,6 +716,10 @@ class PrefsWindowController: NSWindowController {
 
     @objc func showFocusChipChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.showFocusChip)
+    }
+
+    @objc func autoCheckUpdatesChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.autoCheckUpdates)
     }
 
     @objc func launchAtLoginChanged(_ sender: NSButton) {
