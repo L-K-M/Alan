@@ -614,6 +614,11 @@ extension NSWindow {
         let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
             guard let self, isCurrent() else {
                 timer.invalidate()
+                // Restore the known opacity on the cancelled path too, not just
+                // on natural completion: every caller today happens to reset it
+                // as well, but a helper whose contract promises a known alpha
+                // shouldn't rely on that.
+                self?.alphaValue = 1
                 return
             }
             let t = Date().timeIntervalSince(start) / duration

@@ -1040,6 +1040,9 @@ class FocusHighlighter {
               outgoing != newFrame else { return }
         // lastBorderColor is still the color of the border being left behind:
         // showHighlight captures it, and this runs before showHighlight does.
+        // It also can't be nil here — showHighlight sets it before setting
+        // highlightVisible, which the guard above requires — so the ghost never
+        // falls back to resolving the (by now incoming) color at draw time.
         ghostBorderWindow.flash(at: outgoing,
                                 color: lastBorderColor,
                                 reduceMotion: Self.reduceMotion)
