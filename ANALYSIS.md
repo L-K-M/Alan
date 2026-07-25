@@ -442,6 +442,18 @@ auto-height measurement, and getting the clip-view/document-view constraint pair
 wrong produces a subtly broken window that only a build reveals. VIS-8's tighter
 spacing buys headroom in the meantime, and PR #72 added a targeted re-fit for the
 one case that can change the content height after sizing (the Reduce Motion note).
+**Worth checking on device** (raised in PR #72's review, not reproducible off it):
+open Settings on the Appearance tab, turn Reduce Motion on in System Settings,
+then switch to Behavior. `growWindowIfBehaviorTabOverflows` reads
+`behaviorStack.fittingSize` while the Behavior tab is *not* the selected one, so
+its view is detached from the window and `contentView.layoutSubtreeIfNeeded()`
+never reaches it. `fittingSize` solves the constraint system directly rather than
+reading a cached layout, and `NSStackView` drops a hidden arranged subview's
+spacing constraints as soon as `isHidden` changes, so it should be correct — and
+any staleness self-corrects on the next `syncDynamicUI`. If the note does come up
+clipped, the fix is `invalidateIntrinsicContentSize()`, **not** the
+`needsLayout = true` the review suggested: that schedules a layout pass, which is
+not what `fittingSize` reads.
 
 ### VIS-10 · The color-source precedence was invisible in Settings
 *sev medium / conf high · round seven*
