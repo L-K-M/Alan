@@ -604,9 +604,11 @@ extension NSWindow {
     // a timer, the caller's `isCurrent` generation check governs the animation
     // itself rather than only its tail.
     //
-    // The easing is smoothstep, matching NSAnimationContext's default
-    // ease-in-ease-out, so replacing the animator didn't change how a fade
-    // feels. Alpha is left at 1 after ordering out, so the next reveal starts
+    // The easing is smoothstep — an ease-in-ease-out curve close enough to
+    // NSAnimationContext's default (the bezier 0.42, 0, 0.58, 1.0) that
+    // replacing the animator doesn't change how a fade feels. They agree at
+    // both endpoints and the midpoint and differ only in steepness between,
+    // which is not perceptible over a fade this short. Alpha is left at 1 after ordering out, so the next reveal starts
     // from a known opacity even if it interrupted a fade.
     func fadeOutAndOrderOut(over duration: TimeInterval,
                             while isCurrent: @escaping () -> Bool) -> Timer {

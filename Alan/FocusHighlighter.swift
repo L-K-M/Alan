@@ -1040,11 +1040,15 @@ class FocusHighlighter {
               outgoing != newFrame else { return }
         // lastBorderColor is still the color of the border being left behind:
         // showHighlight captures it, and this runs before showHighlight does.
-        // It also can't be nil here — showHighlight sets it before setting
-        // highlightVisible, which the guard above requires — so the ghost never
-        // falls back to resolving the (by now incoming) color at draw time.
+        // It can't be nil here either — showHighlight sets it before setting
+        // highlightVisible, which the first guard requires — but that is a
+        // cross-function invariant, so guard rather than assume it. Skipping a
+        // trail is the right failure: passing nil would let the ghost resolve
+        // its color at draw time, which by then is the *incoming* app's, and
+        // silently reinstates the bug this whole path exists to fix.
+        guard let outgoingColor = lastBorderColor else { return }
         ghostBorderWindow.flash(at: outgoing,
-                                color: lastBorderColor,
+                                color: outgoingColor,
                                 reduceMotion: Self.reduceMotion)
     }
 
