@@ -1,31 +1,26 @@
 # Alan — consolidated analysis & work list
 
-This document consolidates the standing review notes — `awesome.md` (round
-two, v2.1) and `fable-is-awesome.md` (round five) — with the running work
-list into a single deduplicated, actionable file.
+This document is the standing work list for the fork. It consolidates the
+review passes that came before it — `awesome.md` (round two),
+`fable-is-awesome.md` (round five) and `opus.md` (round seven, this pass) —
+with the running list of open items, deduplicated into one actionable file.
 
-**Everything already implemented has been removed.** The previous pass
-shipped 22 fixes/features across PRs #46–#61 (the copy-window raw-bounds
-headline fix, the glide-timer/flash-frame overlay fixes, the observer-create
-retry, the settings-preview idle-wakeup fix, the hand-drawn redraw gate, the
-spotlight-chrome dim, the Xcode pin, the shortcut-recorder policy, the
-launch-at-login guidance, the deprecated-`activate` sweep, the accent-color
-and viewfinder styles, the show-in-screenshots toggle, the contrast casing,
-and the focus trail) and those are now merged into `main` — so they are gone
-from this list, along with everything that shipped in rounds one–four
-(Reduce Motion, live-Dock toggle, pause toggle, always-on status item,
-marching-ants/hand-drawn styles, the recordable hotkey, spotlight/shake/
-space-flash, …). What remains below is the still-open set: entries that were
-deferred last pass, plus the ones this pass implements.
+**Everything already merged into `main` has been removed.** The previous pass
+shipped eight entries as PRs #62–#69 (the drag fast-path, the preview room and
+shadow direction, the cursor warp, the sonar ping, the focus chip, the manual
+update check and the update-grant guidance) plus the Split View, elevated-chrome
+and Accessibility-stand-down fixes; those are in `main` and are gone from this
+list, as is everything from rounds one to six. What remains is the still-open
+set: entries deferred in earlier rounds, plus everything round seven found.
 
 Duplicate entries across the source documents are merged; each entry keeps
-enough detail to implement from directly (file/line anchors, the exact
-approach, the guards, and the gotchas that bit a naïve fix).
+enough detail to implement from directly — file/line anchors, the exact
+approach, the guards, and the gotchas that bit a naïve fix.
 
-Every entry carries a **Resolution** line. Entries implemented in this pass
-ship each on their own branch off `main` with a PR; entries deliberately
+Every entry carries a **Resolution** line. Entries implemented in the current
+pass ship each on their own branch off `main` with a PR; entries deliberately
 deferred say why (usually: a rewrite too large to land safely without a macOS
-build, a change that can only be tuned/validated on-device, or a maintainer
+build, a change that can only be tuned or validated on-device, or a maintainer
 taste call).
 
 Legend: **sev** = severity · **conf** = static confidence · **[dev]** =
@@ -33,37 +28,35 @@ needs on-device confirmation.
 
 ---
 
-## Status of this pass
+## Status of the current pass (round seven)
 
-Of the 24 open entries, **8 are implemented this pass**, each on its own
-branch off `main` with a PR; the other 16 remain deferred with a per-entry
-rationale. Two of the eight (PERF-6, IDEA-8) were deferred *last* pass only to
-avoid colliding with the headline copy-window fix's resolution/`flashBorder`
-regions — now that PR #46 (and #56) are merged, that blocker is gone and they
-land cleanly. This pass was again authored on Linux with no Xcode, so nothing
-was compiled: the changes were verified by close reading, and CI builds each
-PR on macOS. Three new self-contained classes ship as **new files**
-(`PingWindow.swift`, `FocusChipWindow.swift`, `UpdateChecker.swift`) — the
-project uses an Xcode file-system-synchronized group, so a new `.swift` under
-`Alan/` joins the build with no `project.pbxproj` edit, and a brand-new file
-can't merge-conflict with any other branch.
+Round seven re-read the whole tree — every Swift file, the Xcode project, the
+CI/release workflows, the xib and the asset catalog — and raised 34 entries.
+**17 ship in this pass** across five branches; the other 17 are documented with
+a rationale for deferring. Findings were formed before this document was read and
+then reconciled with it, so carried entries are marked as such and the rest are
+new.
 
-| PR | Branch | Entry |
+| PR | Branch | Entries |
 |---|---|---|
-| #64 | `claude/perf-drag-fastpath` | PERF-6 |
-| #63 | `claude/visual-preview-room` | VIS-6 |
-| #62 | `claude/visual-shadow-direction` | VIS-7 |
-| #65 | `claude/idea-warp-cursor` | IDEA-8 |
-| #66 | `claude/idea-sonar-ping` | IDEA-4 |
-| #67 | `claude/idea-focus-chip` | IDEA-9 |
-| #68 | `claude/update-check` | FEAT-2 |
-| #69 | `claude/update-grant-guidance` | UX-6 |
+| [#70](https://github.com/L-K-M/Alan/pull/70) | `claude/opus-transient-overlays` | BUG-9, BUG-10, BUG-11, BUG-12, BUG-13 |
+| [#71](https://github.com/L-K-M/Alan/pull/71) | `claude/opus-preview-idle` | PERF-8 |
+| [#72](https://github.com/L-K-M/Alan/pull/72) | `claude/opus-settings-ui` | UX-12, VIS-8, VIS-10, VIS-11 |
+| [#73](https://github.com/L-K-M/Alan/pull/73) | `claude/opus-status-menu` | UX-13, UX-14, UX-15, UX-16, UX-17, FEAT-4 |
+| [#74](https://github.com/L-K-M/Alan/pull/74) | `claude/opus-auto-update` | FEAT-3 |
 
-Where several branches touch `FocusHighlighter.swift`,
-`PrefsWindowController.swift`, or `Constants.swift`, they were kept to disjoint
-functions/regions where possible; the unavoidable overlaps are the shared
-lists (`Key.allObservedKeys`, the Behavior-tab stack, `flashBorder`'s head),
-each a keep-both one-line resolution at merge time.
+Only two files are touched by more than one branch:
+`PrefsWindowController.swift` (#71, #72, #74 — three disjoint regions: the
+`BorderPreviewView` class, the tab builders, and one row appended to the
+Behavior stack) and `AppDelegate.swift` (#73, #74 — the menu build vs. one call
+added to `applicationDidFinishLaunching`). Both are keep-both resolutions if
+they collide at all. Two explicit follow-ups at merge time: if #73 lands before
+#74, add `Key.autoCheckUpdates` to `Key.allStoredKeys`; if #72 lands before
+#74, move the auto-update checkbox into #72's "General" section.
+
+This pass, like the last, was authored on Linux with no Xcode, so nothing was
+compiled locally: changes were verified by close reading, and CI builds every
+PR on macOS.
 
 ---
 
@@ -90,154 +83,114 @@ minimization. The raw-bounds fallback (BUG-1, shipped) plus the existing
 `leftMouseUp` refresh already cover the click-driven case. Documented as a
 platform limitation.
 
-### BUG-6 · Full-screen & elevated-chrome false borders from the raw-bounds fallback
-*sev high / conf high / [dev]*
-**Where:** `FocusHighlighter.swift` — the `refresh()` full-screen suppression,
-the `(nil, topBounds)` fallback in `currentFocusedWindow()`, and
-`topmostWindowBounds`.
-**Problem:** The raw-bounds fallback (BUG-1) draws a border at the window
-server's topmost app-owned bounds whenever AX can't name the window, and
-guarded full-screen suppression with `if let windowElement`. In a native
-full-screen Space the topmost app-owned window is frequently the auto-hiding
-unified toolbar / title-bar accessory — a separate window, same pid, not a
-nameable AXWindow — so resolution returns `(nil, toolbarBounds)`; the `if let`
-skips the full-screen check entirely and a border is drawn around the toolbar.
-The same pass's layer-ceiling raise (3→8) widened which elevated chrome
-qualifies as "topmost": CleanMyMac's floating overlay panel is the reported
-second case, where the border hugs a small region instead of the window.
-Full-screen (not tiled) windows must get *no* border; Split View tiles must
-keep theirs.
-**Fix (implemented this pass):** (1) `shouldSuppressForFullScreen` probes the
-frontmost app's own focused/main window for a screen-filling full-screen
-window when the resolved element is nil, so the whole full-screen Space is
-suppressed regardless of what the z-order latched onto — Split View tiles fill
-only half the screen, so `windowFillsScreen` is false and they keep their
-border. (2) Restrict the blind `(nil, topBounds)` draw to layer-0 windows;
-elevated *unnamed* chrome falls through to the keyboard-focus resolution
-instead. The named key/main/`appWindowMatching` cross-checks still span the
-full 0…8 range, so a nameable modal dialog at an elevated layer is unaffected,
-and Finder's layer-0 copy-progress panel still gets its border.
-**Resolution:** ✅ Implemented → `claude/active-window-detection-regressions`.
-Residuals, deferred (need a device or a larger redesign):
-- If the same frontmost app has a full-screen window parked on *another* Space
-  while showing an unnameable raw-bounds window on the desktop, the probe
-  over-suppresses; AX exposes no clean per-Space signal to separate the two.
-- If CleanMyMac's offending window is itself layer-0 *and* panel-sized, it is
-  geometrically and layer-wise indistinguishable from the copy-progress panel
-  the fallback exists to serve — the user's "might be unsolvable" holds for
-  that specific case. Do **not** raise the >40×40 floor toward panel size; that
-  regresses the copy-progress panel.
-- `isSameWindow(nil, nil) == true` collapses all raw-bounds windows to one
-  identity (no focus chip/pulse/trail between two of them, and a shared frame
-  can short-circuit the redraw); thread the CGWindowID for a real identity.
-- The durable fix for the whole class is to take the raw-bounds fallback only
-  when the bounds plausibly correspond to a real content/panel window, rather
-  than enumerating chrome exceptions one at a time. (The top-edge-chrome
-  guard shipped with BUG-7 is the first piece of this: a *shape* test on the
-  bounds instead of a per-app exception.)
+### BUG-9 · The focus chip can go permanently invisible
+*sev medium / conf high · round seven*
+**Where:** `FocusChipWindow.show(icon:name:above:)` — the
+`NSAnimationContext.runAnimationGroup { animator().alphaValue = 0 }` fade and the
+`alphaValue = 1` at the top of the next `show`.
+**Problem:** `generation` guarded the *completion handler*, but nothing cancelled
+the running animation. `NSWindow`'s animator proxy keeps stepping `alphaValue`
+toward its own target, so assigning `alphaValue = 1` is overwritten on the
+animation's next step. At t=0 chip A shows (0.8 s hold); at t=0.8 a 0.25 s fade
+starts; at t=0.9 focus changes again and `show()` bumps the generation, sets
+alpha 1 and orders front — but **A's fade is still running** and drags the new
+chip to 0 by t=1.05, at which point A's completion handler sees a stale
+generation and, doing its job, declines to `orderOut`. The window is left
+ordered in at alpha 0 and never reveals again until a focus change lands outside
+a fade window. It recovers eventually, which makes it read as flaky rather than
+broken — during a run of quick app switches, exactly what the chip exists for.
+**Fix:** drive the fade from a timer, the way `PingWindow` already does, so the
+generation counter governs the animation and not just its tail. (A zero-duration
+`runAnimationGroup` before the assignment also works, but leaves two animation
+mechanisms in a file that already has a timer-based one.)
+**Resolution:** ✅ Implemented → `claude/opus-transient-overlays` (PR #70). A
+follow-up commit restores smoothstep easing so the rewrite doesn't quietly
+change how the fade feels.
 
-### BUG-7 · Split View: border hugs the full-screen toolbar strip instead of the tile
-*sev high / conf high / [dev]*
-**Where:** `FocusHighlighter.swift` — the z-order cross-check in
-`currentFocusedWindow()` (`topmostWindowBounds` → `appWindowMatching` → the
-`(nil, topBounds)` fallback).
-**Problem:** In a full-screen *or Split View* Space, AppKit hosts the
-window's toolbar in a separate same-pid window (`NSToolbarFullScreenWindow`)
-that sits above the content window in z-order — persistently visible in
-Split View, so every refresh trips over it. The BUG-6 fix suppresses the
-whole Space only when the app's focused/main window is full-screen *and
-screen-filling*, which a Split View tile deliberately is not (it fills half
-the screen and must keep its border). So in Split View the z-order snapshot
-latches onto the toolbar strip and resolution returns it — either *named*,
-when the app exposes the strip as an AX window (`appWindowMatching` spans
-the full 0…8 layer band), or *blind*, when the strip sits at layer 0 and the
-raw-bounds fallback fires. Reported against WeChat: the border hugs the
-header/search strip instead of the WeChat tile. Neither of BUG-6's guards
-can catch this: the layer-0 restriction only blocks *elevated unnamed*
-chrome, and the full-screen probe correctly declines to suppress a tile.
-**Fix (implemented this pass):** a geometric chrome guard
-(`isTopEdgeChrome`) in the z-order cross-check, after the key/main equality
-checks and before `appWindowMatching`: when the topmost bounds are a strip
-glued to the top edge of the focused or main window — same left edge and
-width (±8 pt), anchored at the window's top edge (auto-hiding overlay) or
-ending exactly where the window begins (pinned toolbar), height ≤ 160 pt and
-< half the window, and proportioned like a ribbon (width ≥ 4× height) — the
-snapshot is pointing at furniture, so resolution returns the window the
-strip *belongs to*: whichever of focus/main actually passed the shape test,
-focus checked first. Returning the owner rather than blindly preferring
-focus keeps the BUG-6 full-screen suppression intact when the strip rides a
-full-screen content window while a same-pid layer-0 panel holds keyboard
-focus — the owner is the full-screen window, and `refresh()` suppresses the
-Space as before. The tight top-anchoring tolerance keeps sheets (which hang
-~28 pt below the top edge) and centered panels out, and the 4:1 proportion
-test excludes the panel class the cross-check exists to serve (Finder's
-~460×140 copy-progress panel and flush sheets run ~3:1) even when one
-coincidentally aligns with the window's edges — so BUG-1's headline fix is
-untouched; a strip that fails the shape test resolves exactly as before.
-**Resolution:** ✅ Implemented → `claude/alan-window-highlighting-qngnkr`,
-after a multi-agent adversarial review of the first draft (the owner-first
-return and the proportion test are both products of that review). Residuals:
-- If the app's AX tree resolves keyboard focus *into the strip itself*
-  (typing in a toolbar search field whose AXWindow is the accessory), the
-  strip is legitimately the focused window and still gets the border —
-  arguably correct, since that is where input goes.
-- A genuine sibling window that is ribbon-proportioned (≥ 4:1), equal-width
-  and flush with the focused window's top edge within 8 pt on all three
-  axes is misread as chrome and the border lands on the window behind it.
-  No such stock macOS window is known — sheets and progress panels fail the
-  proportion test, and no stock palette parks flush, equal-width, at
-  another window's top edge. (Elevation itself is no shield: the guard
-  never reads the window's layer, so an elevated palette meeting the
-  geometry would be misread like a layer-0 one.) Accepted as the price of
-  the shape heuristic.
-- The shape test is deliberately conservative, so it has a false-negative
-  band: a strip taller than a quarter of its tile's width, or offset more
-  than 8 pt from the tile's top edge (the revealed position of auto-hiding
-  chrome sliding in under the menu bar), is not recognized, and resolution
-  proceeds exactly as before the guard — the pre-BUG-7 symptom can recur
-  there. No known real pairing reaches the band (tall compound chrome like
-  Safari's belongs to apps whose own minimum window widths keep tiles ≥ 4×
-  the strip; apps that shrink to the ~322 pt Split View minimum carry only
-  ~52–80 pt accessories), and it must not be closed by loosening: relaxing
-  4:1 toward 3:1 re-admits the ~3:1 copy-progress panel, and widening the
-  8 pt anchor toward sheet offsets re-admits sheets.
+### BUG-10 · The same fade race in `GhostBorderWindow`
+*sev low / conf high · round seven*
+**Where:** `HighlightWindow.swift` — `GhostBorderWindow.flash`.
+**Problem:** identical mechanism to BUG-9, reached by fast alt-tabbing with
+"Focus trail" on: a trail flashed during the previous trail's 0.8 s fade inherits
+that animation and shows dimmer, shorter, or not at all. Lower severity only
+because the trail is decorative and its longer duration makes the overlap window
+proportionally smaller.
+**Fix:** the same timer-driven fade.
+**Resolution:** ✅ Implemented → `claude/opus-transient-overlays` (PR #70).
 
-### BUG-8 · Losing Accessibility mid-run wedges the machine (Alan never stands down)
-*sev high / conf medium / [dev]*
-**Where:** `FocusHighlighter.swift` (AX error handling, retry machinery,
-observer registration) and `AppDelegate.swift` (trust checked only once, at
-launch).
-**Problem:** Revoking Alan's Accessibility grant while it runs reportedly
-freezes the whole machine, sometimes indefinitely. Nothing in the app ever
-re-checks trust after launch: `.apiDisabled` was lumped with
-`.cannotComplete` as a *transient stall*, so every failing resolution armed
-another 0.5 s retry, every app switch re-attempted the nine
-`AXObserverAddNotification` registrations against the new frontmost app's
-AX server (five retries per app), the drag monitor kept 30 Hz resolution
-polls alive, and the raw-bounds fallback even kept drawing borders from
-pure window-server data. Every AX call is a synchronous IPC serviced by
-other processes; once the API starts refusing the caller, calls can block
-out the messaging timeout instead of failing fast, and an Alan wedged in
-that state with observers still registered in other apps' AX servers gives
-the rest of the session something to block on. The exact blocking leg
-varies by macOS build — which is why conf is medium and the fix targets the
-class, not one mechanism.
-**Fix (implemented this pass):** treat trust as a monitored state. TCC's
-`com.apple.accessibility.api` distributed notification (plus a coalesced
-re-check whenever any AX call returns `.apiDisabled`, routed through a new
-`noteAXError`) drives `reconcileAccessibilityTrust()`: on loss,
-`suspendForTrustLoss()` tears down the AX observer, stops the drag poll and
-every retry/settle/flash timer, hides all overlays, and flips an
-`axTrustLost` flag behind which `refresh()`, `flashBorder()`,
-`observeFrontmostApp()`, and `startDragTracking()` are no-ops — zero AX
-traffic while untrusted, nothing to block on. On re-grant (the same
-distributed notification) the highlighter resumes as on a fresh start and
-flashes the border as the "you're all set" moment. The app delegate
-listens for the suspension and runs the existing guided re-grant flow with
-runtime-appropriate wording.
-**Resolution:** ✅ Implemented → `claude/alan-window-highlighting-qngnkr`.
-Needs on-device confirmation that revoke → suspend → re-grant → resume
-round-trips cleanly; the freeze itself can only be reproduced on a device.
+### BUG-11 · The focus trail is painted in the *incoming* app's color
+*sev medium / conf high · round seven*
+**Where:** `FocusHighlighter.maybeShowFocusTrail(focusChanged:newFrame:)` →
+`GhostBorderWindow.flash` → `HighlightView.draw` → `currentBorderColor()`.
+**Problem:** the ghost's content view is a plain `HighlightView`, which resolves
+its color at *draw* time from `currentBorderColor()` — which reads
+`NSWorkspace.shared.frontmostApplication`. By the time the trail is flashed,
+focus has already moved. So with per-app colors on, the ghost whose entire job is
+to say *"you came from over there"* wore the color of where you just went: the
+one piece of information it must not carry. Party mode has a milder version — the
+ghost samples the live hue rather than the hue the outgoing border wore.
+**Fix:** `HighlightView` gains an optional `overrideColor` (nil = today's
+behavior); `FocusHighlighter` captures the border color at the top of
+`showHighlight`, and `maybeShowFocusTrail` — which runs *before* `showHighlight`
+— reads the previous capture, i.e. the outgoing window's color. No "previous app"
+bookkeeping needed; the existing call order does the work.
+**Resolution:** ✅ Implemented → `claude/opus-transient-overlays` (PR #70).
+
+### BUG-12 · `disableFrameTimer` isn't scheduled in `.common` run-loop mode
+*sev low / conf high · round seven*
+**Where:** `FocusHighlighter.temporarilyDisableFrameDrawing()`.
+**Problem:** every other timer in `FocusHighlighter` — the settle chain, the
+resolution retry, the observer retry, the flash, the drag poll, the glide — is
+explicitly added to `RunLoop.current` in `.common` mode. This one was not, so it
+only fired in `.default`. With "Show border while dragging" off, a main run loop
+sitting in a tracking mode when the re-enable was due (an open menu, a modal
+panel) stranded the border hidden until that loop exited. The one timer in the
+file that could leave the app in a no-border state.
+**Resolution:** ✅ Implemented → `claude/opus-transient-overlays` (PR #70).
+
+### BUG-13 · "Show overlays in screenshots" didn't reach the trail or the chip
+*sev low / conf high · round seven*
+**Where:** `GhostBorderWindow.init` and `FocusChipWindow.init` hardcoded
+`sharingType = .none`; `FocusHighlighter.forceUpdate()` fanned
+`applyOverlaySharingType()` over only `highlightWindow` and `dimWindows`.
+**Problem:** `Key.showInScreenshots` is presented as a single switch — "Show
+overlays in screenshots and recordings" — while two of the five overlays opted
+out unconditionally. A user who turned it on to record a demo of the app got the
+border and the dim, and a border-shaped *hole* where the focus trail should be.
+The chip's exemption was defensible on privacy grounds but undocumented, and the
+user has already made the explicit choice.
+**Fix:** route both through `applyOverlaySharingType()` and include them in the
+live fan-out. (`PingWindow` already did this correctly and was the model.)
+**Resolution:** ✅ Implemented → `claude/opus-transient-overlays` (PR #70).
+
+### BUG-14 · Vestigial `lastCornerRadius` in `DimWindow`'s skip check
+*sev trivial / conf high · round seven*
+**Where:** `HighlightWindow.swift` — `DimWindow.update(screenFrame:cutout:)`.
+**Problem:** the repaint-skip check reads and stores `Key.cornerRadius`, but
+`DimView.draw` stopped using it when the cut-out moved to
+`Defaults.windowCornerRadius` (the window's own ~10 pt glass radius). The
+comparison now only causes *extra* repaints: changing the border's corner radius
+forces a full-screen dim repaint per display that cannot change a pixel.
+**Resolution:** ⏸️ Deferred — genuinely harmless and one line, but it belongs
+with whoever next touches that skip check; folding it into PR #70 (a different
+region of the same file) would have blurred that PR's story for no benefit.
+
+### BUG-15 · The Settings preview shows Alan's *own* per-app color
+*sev low / conf high · round seven*
+**Where:** `BorderPreviewView.draw` → `HighlightView.currentBorderColor()`.
+**Problem:** the per-app branch reads `NSWorkspace.shared.frontmostApplication`.
+While the Settings window is open and key, that is Alan. So the preview of
+"Per-app border colors" is a live, accurate rendering of the color assigned to
+`studio.retina.Alan` — a color the user will essentially never see, since Alan
+has no ordinary windows other than that one. The checkbox therefore appears to do
+something arbitrary.
+**Fix (design call):** either render the preview against a representative sample
+bundle ID with a caption ("each app gets its own hue"), or — better — show a
+strip of swatches for the user's currently running apps, which doubles as the
+legend that makes per-app colors learnable on day one instead of day two (IDEA-21).
+**Resolution:** ⏸️ Deferred — the fix is a decision about what the preview should
+*claim*, not a mechanical correction, and the swatch-strip version is a feature in
+its own right.
 
 ---
 
@@ -311,28 +264,6 @@ change the blur inputs every frame.
 render-server path deletes these CPU Gaussians for free); the shipped PERF-5
 hand-drawn redraw gate already removes a chunk of the cost in the meantime.
 
-### PERF-6 · Live-drag re-runs the whole focus chain per 30Hz tick
-*sev low / conf medium / [dev]*
-**Where:** `FocusHighlighter.swift` — drag timer `startDragTracking` calls
-`refresh()`; resolution in `currentFocusedWindow()`.
-**Problem:** During a drag the 30Hz timer calls `refresh()` →
-`currentFocusedWindow()` every tick; the z-order block is skipped
-(`dragTimer != nil`), but the window is still re-derived from scratch
-(`focusedWindowElement()` reads `AXFocusedUIElement` then `AXWindow`, plus the
-`axFrame` read — ~3 IPC) even though it's already in `lastFocusedWindow` and
-can't change focus mid-drag (you're holding its title bar). ~90 AX IPC/s where
-~30 would do.
-**Fix:** In `refresh()`, just before the `lastResolutionTimedOut = false` /
-`currentFocusedWindow()` guard, add a drag fast-path: when `dragTimer != nil`
-and `lastFocusedWindow` is non-nil and its `axFrame(of:)` reads, use
-`(lastFocusedWindow, frame)` directly; otherwise fall through to the full
-`currentFocusedWindow()`. A window-closed nil or a stalled read (which sets
-`lastResolutionTimedOut`) falls back; the mouse-up `refresh()` re-syncs.
-Everything downstream is untouched.
-**Resolution:** ✅ Implemented → `claude/perf-drag-fastpath` (PR #64). Deferred
-last pass only to avoid a merge conflict with the headline fix's resolution
-region; now that PR #46 is merged, it lands cleanly.
-
 ### PERF-7 · `forceUpdate()` does an AX round-trip on every defaults change
 *sev low / conf medium · carried from round two*
 **Where:** `FocusHighlighter.forceUpdate()` via the defaults KVO bridge; a
@@ -350,9 +281,60 @@ Naturally folds into the UX-8 `Settings` facade.
 **Resolution:** ⏸️ Deferred — only worth it if it shows in a profile; folds
 naturally into the UX-8 Settings facade.
 
+### PERF-8 · The Settings preview repainted 30×/s regardless of what was on it
+*sev medium / conf high · round seven*
+**Where:** `BorderPreviewView.startRedrawTimer()` / `updateRedrawTimer(visible:)`.
+**Problem:** round six fixed the real bug here (the timer used to run forever
+after Settings was opened once) by gating it on the window's occlusion state. But
+while the window *is* visible the timer was unconditional at 30 Hz, and each tick
+redrew the mock desktop, the mock window, the traffic lights and then the real
+`HighlightView.drawBorder` — which, with "Glowing border" or "Stronger shadow"
+on, runs one or two CPU `NSShadow` Gaussian blurs over the preview's backing
+store, on the main thread. Nothing in the preview is time-varying unless party
+mode is on or the style is ants/hand-drawn; everything else changes only on a
+defaults write, and `syncDynamicUI()` already invalidates the preview for each of
+those. So in the default configuration all thirty repaints per second produced an
+identical picture, while the Settings window was open — precisely when a user is
+watching for the app to feel light.
+**Fix:** gate the timer on `partyMode` or an animated `BorderStyle`, and never
+under Reduce Motion (all three render statically there), mirroring
+`FocusHighlighter.borderStyleNeedsAnimation()` plus `setPartyMode`'s Reduce Motion
+branch; re-evaluate from `syncDynamicUI()`; keep occlusion as the outer gate.
+Also carry over the hand-drawn seed check from `setBorderStyleAnimating` — the
+wobble re-seeds ~3×/s, so 27 of every 30 ticks re-stroke an identical sketch.
+**Resolution:** ✅ Implemented → `claude/opus-preview-idle` (PR #71).
+
+### PERF-9 · Excluded-apps rows hit LaunchServices on every cell pass
+*sev low / conf high · round seven*
+**Where:** `PrefsWindowController.tableView(_:viewFor:row:)`.
+**Problem:** every cell configuration calls
+`NSWorkspace.urlForApplication(withBundleIdentifier:)`,
+`FileManager.displayName(atPath:)` and `NSWorkspace.icon(forFile:)` — three
+LaunchServices/disk lookups per row, repeated on every `reloadData` and on
+scrolling. `syncDynamicUI` reloads the table whenever the stored list differs,
+which the status menu's Exclude item makes happen while the window is open.
+**Fix:** a `[String: (name: String, icon: NSImage)]` cache keyed by bundle ID,
+invalidated never (an app's name or icon changing mid-session isn't worth
+handling) or on `NSWorkspace.didLaunchApplicationNotification`.
+**Resolution:** ⏸️ Deferred — real, but the list is typically 0–10 rows and the
+cost is only paid while Settings is open; not worth a PR of its own, and it wants
+to land with the UX-8 `Settings` facade cleanup.
+
+### PERF-10 · Shake detection calls `NSEvent.mouseLocation` per mouse-move event
+*sev trivial / conf high · round seven*
+**Where:** `FocusHighlighter.updateShakeMonitor()` — the global `.mouseMoved`
+monitor calls `detectShake(at: NSEvent.mouseLocation.x)`.
+**Problem:** the monitor already *has* the event, and for a global monitor with
+no window `event.locationInWindow` is already in screen coordinates.
+`NSEvent.mouseLocation` is an extra window-server query per mouse-move event, and
+those arrive at the pointer's full sample rate.
+**Resolution:** ⏸️ Deferred — a micro-optimization on an opt-in feature; noted so
+whoever touches shake detection next can fold it in. The inherent cost — waking
+the process on every mouse move — isn't fixable without dropping the gesture.
+
 ---
 
-## C. Visual
+## C. Visual & layout
 
 ### VIS-1 · Border can't straddle two displays
 *sev low / conf high / [dev] · round two #1, carried*
@@ -418,67 +400,102 @@ new tri-state control a maintainer may want to design deliberately. The
 Auto/Square/Custom control and the concentric-radius formula are documented for
 a maintainer to add.
 
-### VIS-6 · Appearance preview clips glow/shadow halos
-*sev low / conf medium*
-**Where:** `PrefsWindowController.makeAppearanceTab` — `previewView.heightAnchor`
-= 150; `BorderPreviewView.draw` mock window at `bounds.insetBy(dx: 90, dy: 38)`;
-the preview layer's `masksToBounds`.
-**Problem:** With only 38pt vertical margin, a stronger shadow at large widths
-reaches ~38pt past the frame and is hard-clipped — the preview shows a
-squared-off halo the user won't actually see.
-**Fix:** Enlarge the vertical inset (`dy: 52`) and bump the height anchor from
-150 to ~190. **Correction:** removing `masksToBounds` does *not* help — a
-layer-backed view can only paint into its bounds-sized backing store, so the
-halo clips regardless; that flag only controls the 6pt corner rounding. Only
-enlarging the room eliminates the clip.
-**Resolution:** ✅ Implemented → `claude/visual-preview-room` (PR #63). A pure
-layout change (taller preview + more vertical room around the mock window); no
-behavior change. Faint clip, but the fix is safe and cheap.
+### VIS-8 · The Behavior tab was a flat wall of eighteen checkboxes
+*sev medium / conf high · round seven*
+**Where:** `PrefsWindowController.makeBehaviorTab()`.
+**Problem:** the tab had grown a row per feature for five rounds and had no
+structure left: sixteen checkboxes, two indented slider rows, a shortcut row, a
+picker and a divider, all at uniform 12 pt spacing. "Show border while dragging",
+"Spotlight mode", "Shake mouse to find window", "Show overlays in screenshots and
+recordings" and "Launch Alan at login" are five unrelated concerns presented as
+one undifferentiated list; the only visual hierarchy was the indentation of the
+two sliders, and inconsistently so — the find-related checkboxes below the
+shortcut row weren't indented although they belong to the same feature. Finding a
+setting meant reading all eighteen labels. It is also what drives the window's
+height, since UX-11 sizes the window to the tallest tab.
+**Fix:** five headed sections — Border, On focus change, Spotlight, Find my
+window, General — with tighter intra-group spacing (12 → 6 pt) and generous
+spacing before each header (18 pt). The tighter spacing roughly pays for the
+headers, so the window barely grows.
+**Resolution:** ✅ Implemented → `claude/opus-settings-ui` (PR #72). Worth a
+glance on device: that the spacing reads as grouping rather than as gaps.
 
-### VIS-7 · Stronger shadow drops the wrong way (flipped view) vs the preview
-*sev low / conf low / [dev]*
-**Where:** `HighlightView.drawBorder` stronger-shadow
-`shadowOffset = NSSize(width: 0, height: -3)`; `HighlightView.isFlipped` is
-true, `BorderPreviewView` is not flipped.
-**Problem:** `HighlightView` is flipped, so `-3` pushes the shadow *upward*
-on-screen (unnatural); `BorderPreviewView` isn't flipped, so the same code
-drops it downward. The two sites cast on opposite sides; the 3pt offset under a
-25pt blur keeps it subtle.
-**Fix:** Derive the sign from the context —
-`let flipped = NSGraphicsContext.current?.isFlipped ?? false; shadow.shadowOffset = NSSize(width: 0, height: flipped ? 3 : -3)` —
-so both cast a natural downward drop. Leave the glow (offset 0,0) alone.
-**Resolution:** ✅ Implemented → `claude/visual-shadow-direction` (PR #62). The
-context-sign fix is logically sound (a drop shadow should fall downward on
-screen in both the flipped overlay and the unflipped preview); the exact
-perceptual result is still worth a glance on device, but a downward drop is the
-universal convention so the change is low-risk.
+### VIS-9 · The Settings window can outgrow a small display
+*sev medium / conf medium / [dev] · round seven*
+**Where:** `PrefsWindowController.buildUI()` — the shortfall computation; the
+window's `styleMask` (no `.resizable`); no scroll view in any tab.
+**Problem:** UX-11 fixed clipping by growing the window to the tallest tab, with
+no ceiling. The Behavior tab's content is on the order of 600 pt; a 13″ MacBook
+Air at its default scaled resolution has roughly 740 pt of `visibleFrame` height.
+Two or three more rows and the window is taller than the screen — and because it
+is neither resizable nor scrollable and is centered, the overflow splits between
+the top and bottom edges with no way to reach it. The same failure mode UX-11
+fixed, just further out.
+**Fix:** clamp the computed height to `NSScreen.main?.visibleFrame.height` minus a
+margin, and put each tab's content in a borderless, non-drawing `NSScrollView`
+(document view pinned to the clip view's width, so only vertical scrolling is
+possible); the `fittingSize` measurement then has to come from the document view.
+Making the window `.resizable` with a minimum size is a cheaper half-measure that
+at least gives the user an escape hatch.
+**Resolution:** ⏸️ Deferred — the scroll-view rework interacts directly with the
+auto-height measurement, and getting the clip-view/document-view constraint pair
+wrong produces a subtly broken window that only a build reveals. VIS-8's tighter
+spacing buys headroom in the meantime, and PR #72 added a targeted re-fit for the
+one case that can change the content height after sizing (the Reduce Motion note).
+
+### VIS-10 · The color-source precedence was invisible in Settings
+*sev medium / conf high · round seven*
+**Where:** `HighlightView.currentBorderColor()` (party → per-app → accent →
+light/dark wells); `PrefsWindowController.syncDynamicUI()`.
+**Problem:** four controls fed one value through a strict precedence chain, and
+the UI showed exactly one link of it — the wells greyed out for accent. Turn on
+"Per-app border colors" and the "Use system accent color" checkbox and both wells
+stayed fully enabled while doing nothing; turn on "Party mode 🌈" and all three
+were inert. No visual signal, no tooltip, no ordering cue. A user who ticks
+accent, sees nothing change because per-app was already on, and unticks it again
+has been told nothing true.
+**Fix:** extend the pattern already used for `focusPulseCheckbox` under spotlight
+mode — disable the subordinate controls and give each a tooltip naming the
+setting that outranks it. (A "Color source" popup would be cleaner still, but it
+swaps four booleans for an enum and the migration isn't worth it.)
+**Resolution:** ✅ Implemented → `claude/opus-settings-ui` (PR #72).
+
+### VIS-11 · Reduce Motion silently neutered several settings
+*sev low / conf high · round seven*
+**Where:** the guards in `moveBorder`/`moveSpotlight`, `HighlightWindow.pulse()`,
+`setPartyMode`, `borderStyleNeedsAnimation()`, `GhostBorderWindow.flash`,
+`PingWindow.ping`.
+**Problem:** the Reduce Motion support is thorough and correct — and was
+completely invisible in Settings. With the system setting on, "Animate movement
+between windows" and its duration slider, "Pulse border on focus change", the
+marching ants and hand-drawn animation and party mode's hue cycle all become
+no-ops while every control stays enabled and unannotated. From the user's side
+the app looks broken in exactly the way an accessibility setting should not make
+it look.
+**Fix:** a single secondary-color note at the foot of the Behavior tab, shown only
+while `accessibilityDisplayShouldReduceMotion` is true, refreshed on
+`NSWorkspace.accessibilityDisplayOptionsDidChangeNotification`.
+**Resolution:** ✅ Implemented → `claude/opus-settings-ui` (PR #72), including a
+window re-fit so a mid-session toggle can't clip the note off the bottom of the
+tallest tab.
+
+### VIS-12 · The app icon set has one slot filled
+*sev low / conf high / [dev] · round seven*
+**Where:** `Alan/Assets.xcassets/AppIcon.appiconset/Contents.json` — nine entries
+with no `filename`, one 512×512@2x pointing at `Icon.png`.
+**Problem:** the catalog declares the full mac icon ladder and supplies only the
+1024 px bitmap, which produces "unassigned children" build warnings and leaves
+macOS to downsample a single image for the 16 pt Dock/Finder/About sizes. A
+1024→16 px box filter of a detailed icon is usually mush. (Separate from the
+*status item* icon, which is a template SF Symbol and is fine.)
+**Fix:** export the ladder from the source artwork (16/32/128/256/512, @1x and
+@2x), or reduce the catalog to a single-size icon entry so Xcode stops warning.
+**Resolution:** ⏸️ Deferred — needs the source artwork and a look at the result at
+16 pt; not something to change blind.
 
 ---
 
 ## D. Interface & UX
-
-### UX-6 · Ad-hoc signed updates re-break the Accessibility grant — undocumented
-*sev medium / conf medium / [dev]*
-**Where:** `README.md` Install section; `release.yml` (`CODE_SIGN_IDENTITY=-`);
-`AppDelegate.requestAccessibilityPermissionIfNeeded()` permission alert.
-**Problem:** macOS TCC keys the grant to the code-signing identity; an ad-hoc
-signature isn't a stable Developer ID, so a freshly downloaded version can
-present as a different app and require re-granting Accessibility. Undocumented,
-so on the first update the app silently stops drawing borders.
-**Fix:** (1) **Docs** — add an "Updating" subsection to the README telling the
-user to remove the old "Alan" row in System Settings → Privacy & Security →
-Accessibility and re-add `/Applications/Alan.app`, and stating Developer ID +
-notarization is the long-term fix. (2) **Runtime** — remember a prior grant
-with a `Key.hadAccessibilityGrant` flag (set true whenever trust is observed
-true); if trust is currently false but the flag is true, branch the permission
-alert's `informativeText` to an update-specific message ("A recent update may
-have reset Alan's Accessibility permission…"). Flag transitions false→true only;
-wording change only, no behavior change.
-**Resolution:** ✅ Implemented → `claude/update-grant-guidance` (PR #69). The
-docs half is device-independent; the runtime half is a defaults flag
-(`Key.hadAccessibilityGrant`) plus alert wording, low-risk. The underlying
-TCC-vs-signature behavior still ultimately wants a device to confirm, but the
-guidance is correct regardless and does no harm if the reset never happens.
 
 ### UX-7 · No test target despite pure, permission-free seams
 *sev low / conf high*
@@ -517,31 +534,6 @@ covered) and enables PERF-7.
 **Resolution:** ⏸️ Deferred — broad cross-file refactor with wide merge surface;
 higher value once UX-7's tests exist to catch regressions.
 
-### UX-11 · Settings window has a fixed height; grown tabs clip at the bottom
-*sev medium / conf high / [dev]*
-**Where:** `PrefsWindowController.swift` — the 520×560 `contentRect` in the
-convenience init; `makeBehaviorTab`/`makeAppearanceTab` content pinned only
-to the top of the tab view.
-**Problem:** The window is born at a fixed 560 pt and isn't resizable, while
-the Behavior tab gained a row per feature (find-animation picker, warp
-cursor, show-in-screenshots, focus trail, focus chip…). The tab stacks had
-no bottom constraint, so nothing pushed back: the newest rows simply slid
-below the window's bottom edge — reported with "Launch Alan at login"
-half-clipped.
-**Fix (implemented this pass):** each tab now carries a ≤-bottom-spacing
-constraint (priority 999, so the placeholder-height first layout pass can't
-log a break), which both keeps content clear of the edge and makes
-`fittingSize` meaningful; `buildUI` measures each tab's fitting height while
-the views are still detached (installed views echo their autoresizing frame
-back), realizes the tab chrome with one layout pass, and grows the window by
-the tallest tab's shortfall over the content area (the 560 pt placeholder
-stays as a floor). A future row now stretches the window instead of falling
-off the bottom. `window.center()` moved after `buildUI()` so the final
-height is what gets centered.
-**Resolution:** ✅ Implemented → `claude/alan-window-highlighting-qngnkr`.
-Worth a glance on device: the computed height should show all Behavior rows
-with normal breathing room below the divider.
-
 ### UX-10 · No localization
 *sev low / conf high*
 **Where:** no `.strings`/`.xcstrings`; literals in `AppDelegate`, all of
@@ -554,58 +546,207 @@ Mechanical, stageable, no runtime impact for the English build.
 **Resolution:** ⏸️ Deferred — large mechanical churn with no behavior change,
 lowest priority; best staged with Xcode's String Catalog tooling.
 
+### UX-12 · The contrast casing had no UI and no documentation
+*sev medium / conf high · round seven*
+**Where:** `Key.contrastCasing` (`Constants.swift`),
+`HighlightView.contrastCasingActive` (`HighlightWindow.swift`). Those two files
+were, before PR #72, the only places it appeared in the whole tree.
+**Problem:** the feature shipped, worked, was in `allObservedKeys` (so it applied
+live), and was reachable only by someone who read the source and ran
+`defaults write studio.retina.Alan contrastCasing -bool true`. It is also the
+app's answer to the single most common failure of a colored border — content the
+same tone as the border — so the people who need it are the least likely to find
+it. The automatic path (system Increase Contrast on) covers users who have
+already configured macOS for contrast, not users who just have a busy desktop.
+**Fix:** an Appearance-tab checkbox plus a README scripting line. Where Increase
+Contrast forces the casing on, the checkbox shows as on and locked with a tooltip
+saying why, rather than sitting unchecked beside a visible casing; only the
+displayed state is touched, never the stored preference.
+**Resolution:** ✅ Implemented → `claude/opus-settings-ui` (PR #72).
+
+### UX-13 · The status menu was thinner than the feature set
+*sev medium / conf high · round seven*
+**Where:** `AppDelegate.setupStatusItem()` / `menuNeedsUpdate(_:)`.
+**Problem:** the status item is the app's primary — and in hidden-Dock mode, only
+— interface, and exposed seven items for a feature set that had roughly tripled
+since it was written.
+- **Paused was invisible.** The icon was the same `macwindow` glyph either way,
+  so the natural reaction to "my borders are gone" — glancing at the menu bar —
+  told the user nothing.
+- **Exclusion was one-way.** "Exclude 'Safari'" greyed out once Safari was
+  excluded; there was no "Include", so undoing a one-click action cost a trip
+  through Settings to find and remove the row.
+- **Spotlight mode was buried.** One of the app's two headline modes, and the one
+  toggled situationally (presenting, screenshotting, focusing), four clicks deep.
+- **"Find my window" was unreachable** without enabling and learning a chord —
+  which is also what left the hotkey preference undiscoverable.
+- **No link to the project page**, for an app whose update story is a GitHub zip.
+**Fix:** dim the status item (`button.appearsDisabled`) with an explanatory
+tooltip while paused, kept in sync by a KVO observation; make the exclude item a
+toggle; add checkmarked "Spotlight Mode", "Find My Window" and "Alan on GitHub…".
+**Resolution:** ✅ Implemented → `claude/opus-status-menu` (PR #73).
+
+### UX-14 · "Check for Updates…" gave no in-flight feedback
+*sev low / conf high · round seven*
+**Where:** `AppDelegate.checkForUpdates(_:)` → `UpdateChecker.check` (15 s
+`timeoutInterval`).
+**Problem:** the menu closed and nothing happened — for up to fifteen seconds on a
+bad network — then an alert appeared out of nowhere. Meanwhile every extra click
+started another request, and each completion ran its own modal alert, so three
+impatient clicks queued three alerts.
+**Fix:** an `isCheckingForUpdates` flag: retitle the item to "Checking for
+Updates…" and disable it while a request is in flight (`menuNeedsUpdate` already
+runs on every menu open, so the title is free), and drop re-entrant calls.
+**Resolution:** ✅ Implemented → `claude/opus-status-menu` (PR #73).
+
+### UX-15 · The Dock icon flashed at login when "Hide Dock Icon" was on
+*sev low / conf medium / [dev] · round seven*
+**Where:** `AppDelegate.applicationDidFinishLaunching` called
+`applyActivationPolicy()`; the generated Info.plist has no `LSUIElement`.
+**Problem:** the app was born `.regular` and only became `.accessory` inside
+`didFinishLaunching`, by which point AppKit had already put it in the Dock and
+given it the menu bar. For a login item — the intended configuration for this app
+— that is a Dock icon that appears and vanishes on every boot.
+**Fix:** move the call (and the defaults registration) to
+`applicationWillFinishLaunching`, which runs before the app is presented.
+`LSUIElement` is not an option: the policy has to stay switchable at runtime,
+which is the whole point of the live toggle.
+**Resolution:** ✅ Implemented → `claude/opus-status-menu` (PR #73).
+
+### UX-16 · `hideDock` written externally didn't apply until relaunch
+*sev low / conf high · round seven*
+**Where:** `Key.hideDock` was deliberately excluded from `Key.allObservedKeys`;
+the README documented the caveat as `# applies on relaunch when set externally`.
+**Problem:** the reasoning was right — the highlighter shouldn't own the
+activation policy — but the conclusion wasn't. Every other key in the domain
+applies live, which is the whole selling point of the README's Scripting section;
+this one silently didn't, so a Shortcuts action or Stream Deck button that hid the
+Dock icon appeared to do nothing.
+**Fix:** `AppDelegate` observes the key itself (KVO on `UserDefaults`, the same
+mechanism `DefaultsObservationBridge` uses) and re-applies the policy on change.
+Ownership stays where it belongs and the README's asterisk goes away.
+**Resolution:** ✅ Implemented → `claude/opus-status-menu` (PR #73).
+
+### UX-17 · `applicationSupportsSecureRestorableState` wasn't implemented
+*sev trivial / conf high · round seven*
+**Problem:** on macOS 14+, an `NSApplicationDelegate` that doesn't implement it
+logs `WARNING: Secure coding is not enabled for restorable state!` on every
+launch. Alan restores no state, so the answer is unambiguously `true`.
+**Resolution:** ✅ Implemented → `claude/opus-status-menu` (PR #73).
+
+### UX-18 · Regular mode ships a stock File/Edit/Window menu of no-ops
+*sev low / conf high · round seven*
+**Where:** `Alan/Base.lproj/MainMenu.xib`.
+**Problem:** with the Dock icon shown, Alan has a full menu bar containing
+File ▸ Close, Edit ▸ Undo/Redo/Cut/Copy/Paste/Delete/Select All, and
+Window ▸ Minimize/Zoom/Bring All to Front. The app has exactly one ordinary
+window — Settings, which has no text editing beyond three number fields and no
+document model — so almost every one of those items is permanently greyed or
+inert. It is the Xcode template's menu bar, not Alan's.
+**Fix:** trim the xib to Alan ▸ (About, Settings…, Services, Hide, Quit),
+Window ▸ (Minimize, Close), and add a Help ▸ GitHub item.
+**Resolution:** ⏸️ Deferred — editing a xib by hand off-device is exactly where a
+mistake surfaces as a missing menu at runtime rather than a build failure, and the
+payoff is cosmetic. Worth doing with Interface Builder open.
+
+### UX-19 · The About panel has no copyright line
+*sev trivial / conf high · round seven*
+**Where:** `INFOPLIST_KEY_NSHumanReadableCopyright = ""` in both build configs.
+**Problem:** `orderFrontStandardAboutPanel` renders the version and nothing else.
+For a fork of an MIT-licensed project, the About panel is the natural place to
+carry "© 2025 Tyler Hall · MIT".
+**Resolution:** ⏸️ Deferred — a two-line `project.pbxproj` edit, but the exact
+attribution wording is the maintainer's call, not a reviewer's.
+
+### UX-20 · Only one action is bindable to a global shortcut
+*sev medium / conf high · round seven*
+**Where:** `FocusHighlighter.registerFindMyWindowHotkey` (a single
+`EventHotKeyID(signature: 'ALAN', id: 1)`, a single `hotKeyRef`, and a handler
+that ignores the incoming hotkey ID and always calls `flashBorder`);
+`ShortcutRecorderButton` (hardcoded to the three `findMyWindow*` defaults keys).
+**Problem:** "find my window" is the *least* likely of Alan's actions to want a
+chord. Pausing (before a screen share) and toggling spotlight (before a demo) are
+the situational actions, and neither can be bound. The machinery is 90 % of the
+way there — registration failure, reserved combos, recording suspension and
+function keys are all handled — but every piece of it is singular.
+**Fix:** parameterize. Give `ShortcutRecorderButton` its three defaults keys via
+`init`; keep a `[EventHotKeyID.id: () -> Void]` table in the highlighter; read the
+fired ID in the Carbon handler with
+`GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &id)`
+and dispatch; register/unregister each entry independently.
+**Resolution:** ⏸️ Deferred — the Carbon dispatch idiom and a three-recorder-row
+Behavior tab both want a compiler and a keyboard. Documented in enough detail to
+implement directly; **this is the highest-value next feature.** PR #73's
+status-menu Spotlight and Find My Window items cover part of the need in the
+meantime.
+
 ---
 
 ## E. Missing features
 
-### FEAT-2 · Update mechanism
-*sev low / conf high*
-**Where:** none today; `README.md` links `releases/latest`.
-**Problem:** Nothing checks for a newer build; a Dock-hiding background utility
-can run a months-old version forever. Sparkle needs a stable Developer ID the
-ad-hoc pipeline lacks.
-**Fix:** A dependency-free `UpdateChecker` — GET
-`https://api.github.com/repos/L-K-M/Alan/releases/latest`
-(`Accept: application/vnd.github+json`) on a background `URLSession`, fail
-silently on any error; decode `tag_name`/`html_url`; **compare versions
-component-wise numeric, not string** (split on `.`, pad, map to Int — a string
-compare mis-orders "2.10.0" vs "2.9.0") against `CFBundleShortVersionString`.
-Ship the **manual** "Check for Updates…" status-menu item first (bypasses any
-gate, gives explicit "up to date" feedback). Optional automatic weekly check
-(gated on a `lastUpdateCheck` date, a `skippedVersion`, and an opt-in preference
-defaulting off) can follow.
-**Resolution:** ✅ Implemented → `claude/update-check` (PR #68) — the manual
-"Check for Updates…" status-menu item, backed by a dependency-free
-`UpdateChecker` (new file) with a component-wise numeric version compare and
-silent failure. The optional automatic weekly check is left as a documented
-follow-up. Network behavior can't be exercised off-device, but the check is
-user-initiated and fails silently, so the downside is bounded.
+### FEAT-3 · Automatic update check
+*sev medium / conf high · round seven*
+**Where:** `UpdateChecker.swift` (documented as the FEAT-2 follow-up), `AppDelegate`.
+**Problem:** the manual check shipped, but nothing prompts a user who never opens
+the menu. That matters more for Alan than for most apps because of UX-6: an
+ad-hoc-signed update can reset the Accessibility grant, so the population most
+likely to be on a stale build overlaps almost exactly with the population that
+once watched Alan stop drawing borders and never diagnosed it. A background
+utility with a hidden Dock icon can run a year-old build indefinitely.
+**Fix:** an opt-in weekly check. `Key.autoCheckUpdates` (registered `false`),
+`Key.lastUpdateCheck` and `Key.skippedUpdateVersion`. Announce only
+`.updateAvailable`, and only for a version that isn't the skipped one — silence
+is the right outcome for "up to date" and for a network failure, since nobody
+asked. Alert offers Download / Later / Skip This Version. Record the timestamp
+before the request regardless of outcome, so a flaky network can't become a
+request loop; treat a future timestamp as due, so a backwards clock can't
+suppress checks forever; delay the launch check so it can't compete with the
+permission flow, and never open a modal session inside one.
+**Resolution:** ✅ Implemented → `claude/opus-auto-update` (PR #74).
+
+### FEAT-4 · No way to restore default settings
+*sev low / conf high · round seven*
+**Problem:** ~25 stored settings, several of which (party mode, an extreme dim
+level, a wide glowing border) can leave the app looking broken, plus a colour
+precedence a user can talk themselves into a corner with. The only recovery was
+`defaults delete studio.retina.Alan` in a terminal — which also, silently, erases
+the excluded-apps list.
+**Fix:** a "Restore Defaults…" status-menu item that confirms first, naming what
+it will discard, then removes every `Key.*` from the domain so the values
+registered at launch take over again. Cancel is the default button. Two
+deliberate omissions: `hadAccessibilityGrant` (a record, not a setting — clearing
+it makes a re-grant read as a first run) and Launch at Login (it lives in
+`SMAppService`, and un-registering a login item isn't something a settings reset
+should do behind the user's back).
+**Resolution:** ✅ Implemented → `claude/opus-status-menu` (PR #73), together with
+a fix for a latent bug it exposed: `syncDynamicUI` never re-read the stored border
+colors, so a stale color well would write its old value back over a restored one.
+
+### FEAT-5 · No inclusion list
+*sev low / conf medium · round seven*
+**Problem:** exclusions can't express "only highlight my editor and my terminal".
+For a user who wants Alan for two apps, the list is the wrong shape and has to be
+maintained forever as they install things.
+**Fix:** a mode switch on the Excluded Apps tab — "Never highlight these apps" /
+"Only highlight these apps" — reusing the same list and the same `refresh()`
+check with the sense inverted. Cheap: the tab already has the table, the
+drag-and-drop and the add/remove buttons.
+**Resolution:** ⏸️ Deferred — small and self-contained, but it changes the meaning
+of an existing stored list, so it wants a migration story (`Key.appListMode`
+defaulting to `exclude`) and a maintainer's opinion on the tab's copy.
+
+### FEAT-6 · Per-app settings beyond color
+*sev low / conf low · round seven*
+**Problem:** per-app *colors* exist; per-app style, width and spotlight don't.
+"Thick red border on the production terminal, thin grey everywhere else" is the
+canonical ask.
+**Resolution:** ⏸️ Deferred — a genuine feature with a real settings-UI design
+problem behind it (per-app override tables are hard to make simple). Noted, not
+specified. IDEA-21's colour legend would be the natural place to hang it.
 
 ---
 
 ## F. Ideas — novel, delightful, quirky
-
-### IDEA-4 · Sonar-ping find animation
-*sev low / conf high*
-**Where:** `FocusHighlighter.flashBorder()`, center from the resolved frame.
-**Problem/why:** `flashBorder()` only strobes the existing border — which fails
-at exactly the moment it's needed, when the border is hard to see. One or two
-stroked rings expanding from the window center and fading over ~0.5s draw the
-eye to the *location* independent of border color/contrast.
-**Fix:** A transient `PingWindow` (same click-through, out-of-capture setup as
-`HighlightWindow`/`GhostBorderWindow`) framed to the focused window's screen;
-content view draws N concentric rounded-rects at `radius = progress * maxReach`,
-`alpha = 1 - progress`, stroke = `currentBorderColor()`; driven by a
-`Defaults.findPingDuration` (~0.5s) timer. Gate on `Key.findAnimation`
-("flash" | "ping"; **not** in `allObservedKeys` — only matters when the gesture
-fires). Shared by the hotkey, shake, and Space-change flash (all route through
-`flashBorder`). Under Reduce Motion, a single static ring held briefly. Guard
-overlapping pings with an internal generation counter (like `GhostBorderWindow`).
-**Resolution:** ✅ Implemented → `claude/idea-sonar-ping` (PR #66). `PingWindow`
-ships as a new file (no pbxproj edit, no merge surface); `flashBorder` gets a
-small early-return branch when `findAnimation == .ping`, plus a Behavior-tab
-picker (Flash / Sonar ping). Follows the proven `GhostBorderWindow` window/
-generation/fade pattern.
 
 ### IDEA-5 · Spotlight and border at the same time
 *sev low / conf high / [dev]*
@@ -656,49 +797,6 @@ device; the safety net makes a dropped release non-fatal.
 `kEventHotKeyReleased` fires reliably for this registration, plus the
 modifier-drop safety net; Carbon release semantics can't be verified off-device.
 
-### IDEA-8 · Warp the cursor to the focused window on find-my-window
-*sev low / conf high / [dev]*
-**Where:** `FocusHighlighter.flashBorder()`.
-**Fix:** `Key.warpCursorOnFind` (default off, *not* in `allObservedKeys`); right
-after the frame resolve in `flashBorder` and using the **AX** frame (top-left
-global Quartz space, shared with `CGWarpMouseCursorPosition`),
-`CGWarpMouseCursorPosition(CGPoint(x: axFrame.midX, y: axFrame.midY))` then
-`CGAssociateMouseAndMouseCursorPosition(1)` (so the cursor doesn't stick for the
-~0.25s HID interval after a warp). Use the AX frame directly — applying the
-cocoa flip would land the cursor mirrored. Wires up the hotkey, shake, and
-Space-change gestures at once. Add a checkbox. Verify on a secondary/
-negative-origin display.
-**Resolution:** ✅ Implemented → `claude/idea-warp-cursor` (PR #65). Deferred
-last pass only to avoid colliding with the (now-merged) `flashBorder` frame-live
-fix; opt-in and default off, so even an odd multi-display warp is harmless until
-the user enables it. Uses a dedicated `currentFocusAXFrame()` helper so the warp
-reads the unflipped AX frame.
-
-### IDEA-9 · Transient "who has focus" chip (app icon + name)
-*sev low / conf high*
-**Where:** `FocusHighlighter.refresh()` focusChanged branch.
-**Problem/why:** On focus change, briefly float a small app-icon + name chip
-near the focused window's top edge for ~0.8s, then fade — answers "what did I
-just switch to?" at a glance, and is especially valuable in spotlight mode where
-the dim hides every other cue.
-**Fix:** `Key.showFocusChip` (default off, in `allObservedKeys`),
-`Defaults.focusChipDuration` (~0.8s); a reusable `FocusChipWindow`
-(HighlightWindow-style setup) with a horizontal stack of icon + truncating label
-on a rounded translucent backing. Hook next to the pulse, suppressed while
-dragging. **Refinement:** derive identity from the *resolved* window
-(`AXUIElementGetPid(windowElement)` → `NSRunningApplication`), not
-`frontmostApplication`, to handle the out-of-process panel-service case (fall
-back to `frontmostApplication` when the element is nil, e.g. the raw-bounds
-panel); position centered above `cocoaFrame`, clamped into the screen's
-`visibleFrame` (flip below if no room). Reuse one instance; hide it in
-`hideHighlight`/paused.
-**Resolution:** ✅ Implemented → `claude/idea-focus-chip` (PR #67).
-`FocusChipWindow` ships as a new file (built on the proven generation/fade
-pattern); the `refresh()` hook is a single call in the focusChanged block plus a
-helper. Layout kept deliberately robust (fixed height, width from the label's
-fitting size, conservative screen-clamping) since it can't be visually verified
-off-device; opt-in and default off, so any positioning nit is bounded.
-
 ### IDEA-10 · Squash-and-stretch the border as it glides
 *sev low / conf high · pure polish*
 **Where:** `FocusHighlighter.makeGlideTimer` (shared with `moveSpotlight`).
@@ -728,6 +826,120 @@ haptic sibling. Off by default.
 sounds aren't guaranteed present, and the review explicitly cautioned against
 relying on them); an accessibility nicety for a follow-up.
 
+### IDEA-12 · Soft-edged "stage light" spotlight
+*conf high that it would look better / conf high that the naïve implementation is too slow · round seven*
+**Where:** `DimView.draw`.
+**Why:** spotlight mode cuts a hard-edged rounded rectangle out of a flat dim —
+closer to a mask than a light. A feathered edge (the dim ramping to zero over
+~20 pt around the window) would make it an actual stage light, which is the
+metaphor the code's own comments already reach for.
+**Why it isn't done:** with the current CPU drawing that means either N stacked
+annuli (~14 even-odd fills over a full-screen backing store, per display, per
+glide frame) or one `NSShadow` Gaussian over a full-screen shape — and
+`DimWindow.update`'s own comment already identifies refilling a 5K backing store
+at 60 Hz as the app's single largest cost. The right implementation is a
+layer-backed dim with a `CAGradientLayer` mask, which is the same rewrite
+PERF-2/PERF-4 want.
+**Resolution:** ⏸️ Deferred — **the first thing to build on top of the PERF-2
+layer rewrite.** It is the change that would most visibly improve the app.
+
+### IDEA-13 · Double-tap a modifier to find the window
+*conf medium · round seven*
+macOS itself trains this gesture: press and release a bare modifier twice inside
+~400 ms with no other key in between, and the border flashes. It costs no chord
+to memorize and can't collide with another app's shortcut, because nothing is
+*consumed* — strictly additive to the existing hotkey.
+**Sketch:** a global `.flagsChanged` monitor (the Accessibility grant is already
+held) gated on `Key.doubleTapModifier` (off by default; a picker for ⌃/⌥/⌘/⇧).
+Track transitions of the chosen flag; require press→release→press inside the
+window; abort the sequence on any `.keyDown` or on any *other* modifier
+appearing. Reuse the shake cooldown to prevent repeats. The false-positive risk
+is real (⌘ is tapped constantly), which is exactly why it's opt-in and why ⌃ is
+the sensible default.
+
+### IDEA-14 · A focus-switch counter in the status menu
+*conf high · pure whimsy, near-zero cost · round seven*
+Alan already knows every time focus changes — it is the event the whole app is
+built on. A disabled menu item reading "142 switches today" costs one counter
+incremented in the `focusChanged` branch, one date stamp to roll it over at
+midnight, and one line in `menuNeedsUpdate`. It's a genuinely interesting number
+nobody has, it makes the menu feel alive, and it fits the app's premise exactly:
+*where is your attention going?* Optional escalation: a "most-visited app today"
+line, or a tiny sparkline. Keep it local, keep it unsent, keep it resettable.
+
+### IDEA-17 · Idle "breathing"
+*conf medium / [dev] · round seven*
+After N minutes with no keyboard or mouse input, the border begins a very slow,
+low-amplitude width breathe (±1 pt over ~4 s), stopping on the first event.
+Coming back to the machine, your eye is drawn to where you left off before you
+have to think about it. Cheap — the pulse machinery already exists, and the
+animation only runs while idle, which is exactly when the CPU is free — and it
+degrades to nothing under Reduce Motion. The risk is that it reads as a
+distraction rather than a welcome, which is a taste call best made on a device.
+
+### IDEA-19 · "Where was I?" — ghost the last few windows
+*conf medium · round seven*
+`GhostBorderWindow` already draws a fading copy of the border at an arbitrary
+rect. Keep a small ring buffer of the last 3–4 focused frames and, on a long
+press of the find hotkey, flash all of them at once at decreasing opacity — a
+visual "recently here" map across the screen. The focus trail generalized from
+one step to a short history, reusing everything except the buffer. Depends on
+UX-20's press/release handling (or IDEA-7's, which is the same mechanism).
+
+### IDEA-21 · A per-app color legend
+*conf high · round seven*
+Per-app colors are pitched in the README as "you learn the colors within a day".
+A legend makes it an hour: a small panel — a Settings tab, or a status-menu item
+— listing currently running apps with their derived swatch. It also fixes BUG-15,
+since the Appearance preview would finally have something honest to show for the
+per-app checkbox, and it is the natural place to hang FEAT-6's per-app overrides
+later. Cost: one `NSTableView` over `NSWorkspace.shared.runningApplications`
+filtered to `.regular` activation policy, using the existing
+`NSColor.perAppColor(for:)`.
+
+---
+
+## G. Project & infrastructure
+*round seven*
+
+- **No test target** (UX-7). The pure seams keep multiplying; the two best new
+  candidates are `UpdateChecker.compareVersions` (pure, with documented edge
+  cases like `2.10.0` vs `2.9.0` and `-beta` suffixes) and `isTopEdgeChrome`
+  (pure geometry with six tuned constants and a long comment explaining why each
+  one is what it is — precisely the kind of thing that regresses silently).
+- **CI builds but doesn't lint or analyze.** `xcodebuild analyze` on the same
+  runner, or a SwiftLint step, would catch the class of thing a human reviewer
+  spends attention on. Warnings are not errors, so a warning introduced by a PR
+  is invisible unless someone reads the log.
+- **No CHANGELOG.** Releases use `--generate-notes`, which produces a commit
+  list; for an app whose updates can require a manual Accessibility re-grant, a
+  human-written "what changed / do you need to re-authorize" note has real value.
+- **The automated PR reviewer is rate-limited.** Opening several PRs in quick
+  succession exhausts the Z.ai quota and the review job fails with HTTP 429 (seen
+  on PR #74). Not a code problem, but worth knowing before judging a red check:
+  the `Build Alan.app` job is the one that matters.
+- **`ENABLE_USER_SCRIPT_SANDBOXING = YES` and `ENABLE_HARDENED_RUNTIME = YES`**
+  with `ENABLE_APP_SANDBOX = NO` — correct for an app that needs the
+  Accessibility API. No entitlements file exists, which is right.
+- **Developer ID + notarization remains the highest-leverage non-code change.**
+  It would delete UX-6, most of FEAT-3's urgency, and half the install friction
+  in one move.
+
+---
+
+## What to do next, in order
+
+1. **PERF-2 + PERF-4** — the display-link / `CAShapeLayer` rewrite. The only
+   change that makes the app *feel* different, it deletes the main-thread
+   Gaussians, and it unlocks IDEA-12 and VIS-1.
+2. **UX-20** — bindable Pause and Spotlight shortcuts. The highest-value feature
+   the existing machinery is already 90 % of the way to.
+3. **UX-7** — a test target, before the pure-geometry helpers grow any more
+   tuned constants.
+4. **VIS-9** — scrollable or clamped Settings, before the Behavior tab outgrows
+   a laptop screen again.
+5. **IDEA-12** — the stage light, once (1) makes it affordable.
+
 ---
 
 ## Assessed and rejected in prior rounds (kept for the record)
@@ -741,3 +953,12 @@ relying on them); an accessibility nicety for a follow-up.
   lookup** — the meaningful cross-process case (out-of-process open/save panel
   service) is already handled by the non-pid-scoped
   `kAXFocusedUIElementAttribute` path.
+- **A reduce-motion branch for the focus chip's fade** (round seven) — the chip
+  appears and fades in place without moving, and cross-fades are what Apple's
+  guidance suggests *substituting* for motion, not something to remove. The
+  reduce-motion branches in `GhostBorderWindow` and `PingWindow` exist because
+  those animations genuinely move.
+- **Growing the Settings window's width in the Reduce-Motion re-fit** (round
+  seven) — the window's width is a fixed literal that nothing changes, so the
+  overflow it guards against can't occur; and it would let a stack's fitting
+  width widen the window as a side effect of an unrelated toggle.
