@@ -590,6 +590,44 @@ extension NSWindow {
     func applyOverlaySharingType() {
         sharingType = UserDefaults.standard.bool(forKey: Key.showInScreenshots) ? .readOnly : .none
     }
+
+    // Fade this window out and order it out — the shared disappearance behind
+    // the focus chip and the focus trail. Returns the scheduled timer so the
+    // caller can invalidate it directly.
+    //
+    // Deliberately *not* `animator().alphaValue`. Assigning alphaValue does not
+    // cancel an animation already in flight: NSWindow's animator proxy keeps
+    // stepping toward its own target and overwrites the assignment on its next
+    // step. That is how a superseded fade used to drag its successor's alpha
+    // back to zero — and how the stale completion handler, correctly declining
+    // to order out a newer window, then stranded it on screen at alpha 0. With
+    // a timer, the caller's `isCurrent` generation check governs the animation
+    // itself rather than only its tail.
+    //
+    // The easing is smoothstep, matching NSAnimationContext's default
+    // ease-in-ease-out, so replacing the animator didn't change how a fade
+    // feels. Alpha is left at 1 after ordering out, so the next reveal starts
+    // from a known opacity even if it interrupted a fade.
+    func fadeOutAndOrderOut(over duration: TimeInterval,
+                            while isCurrent: @escaping () -> Bool) -> Timer {
+        let start = Date()
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self, isCurrent() else {
+                timer.invalidate()
+                return
+            }
+            let t = Date().timeIntervalSince(start) / duration
+            if t >= 1 {
+                timer.invalidate()
+                self.orderOut(nil)
+                self.alphaValue = 1
+            } else {
+                self.alphaValue = CGFloat(1 - t * t * (3 - 2 * t))
+            }
+        }
+        RunLoop.current.add(timer, forMode: .common)
+        return timer
+    }
 }
 
 // A one-shot fading copy of the border, left on the window focus just moved
@@ -652,35 +690,9 @@ class GhostBorderWindow: NSWindow {
             return
         }
 
-        // A timer, not `animator().alphaValue`: assigning alphaValue does not
-        // cancel an animation already in flight — the animator proxy keeps
-        // stepping toward its own target and overwrites the assignment — so a
-        // trail flashed during its predecessor's fade inherited that fade and
-        // was pulled straight back toward zero. See FocusChipWindow.startFade,
-        // where the same race had a louder symptom.
-        let start = Date()
-        let duration = Defaults.ghostTrailDuration
-        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
-            guard let self, self.generation == gen else {
-                timer.invalidate()
-                return
-            }
-            let t = Date().timeIntervalSince(start) / duration
-            if t >= 1 {
-                timer.invalidate()
-                self.fadeTimer = nil
-                self.orderOut(nil)
-                self.alphaValue = 1
-            } else {
-                // Smoothstep for the same reason as FocusChipWindow.startFade:
-                // it matches NSAnimationContext's default ease-in-ease-out, so
-                // the fix doesn't quietly change the trail's feel — which is
-                // more noticeable here, over the longer trail duration.
-                self.alphaValue = CGFloat(1 - t * t * (3 - 2 * t))
-            }
+        fadeTimer = fadeOutAndOrderOut(over: Defaults.ghostTrailDuration) { [weak self] in
+            self?.generation == gen
         }
-        RunLoop.current.add(timer, forMode: .common)
-        fadeTimer = timer
     }
 
     // Order the trail out now (pause, exclude, a Space change), superseding any

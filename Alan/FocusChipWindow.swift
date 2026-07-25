@@ -140,41 +140,14 @@ class FocusChipWindow: NSWindow {
         holdTimer = timer
     }
 
-    // Fade out over `fadeDuration`, then order out.
-    //
-    // Driven by a timer rather than `animator().alphaValue`, because assigning
-    // alphaValue directly does *not* cancel an animation already in flight:
-    // NSWindow's animator proxy keeps stepping alphaValue toward its own target
-    // and simply overwrites the assignment on its next step. A chip shown while
-    // its predecessor was mid-fade was therefore dragged back to zero by that
-    // predecessor's animation — and the completion handler's generation guard,
-    // doing its job, then declined to order the window out, leaving it on
-    // screen at alpha 0. The chip stopped appearing at all for a run of quick
-    // app switches: exactly the moment it is most useful. With a timer the
-    // generation counter governs the animation itself, not just its tail.
+    // Fade out over `fadeDuration`, then order out. The mechanics — why a
+    // timer rather than `animator().alphaValue`, and why the generation check
+    // has to govern the animation and not just its tail — live on the shared
+    // NSWindow.fadeOutAndOrderOut helper.
     private func startFade(generation gen: Int) {
-        let start = Date()
-        let duration = FocusChipWindow.fadeDuration
-        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
-            guard let self, self.generation == gen else {
-                timer.invalidate()
-                return
-            }
-            let t = Date().timeIntervalSince(start) / duration
-            if t >= 1 {
-                timer.invalidate()
-                self.fadeTimer = nil
-                self.orderOut(nil)
-                self.alphaValue = 1
-            } else {
-                // Smoothstep, not a linear ramp: NSAnimationContext's default
-                // timing is ease-in-ease-out, and the point of this rewrite is
-                // to fix the race without changing how the fade feels.
-                self.alphaValue = CGFloat(1 - t * t * (3 - 2 * t))
-            }
+        fadeTimer = fadeOutAndOrderOut(over: FocusChipWindow.fadeDuration) { [weak self] in
+            self?.generation == gen
         }
-        RunLoop.current.add(timer, forMode: .common)
-        fadeTimer = timer
     }
 
     // Order the chip out now (a hide/pause/Space-change), superseding any
