@@ -27,6 +27,7 @@ class PrefsWindowController: NSWindowController {
     private let useAccentColorCheckbox = NSButton(checkboxWithTitle: "Use system accent color", target: nil, action: nil)
     private let glowingBorderCheckbox = NSButton(checkboxWithTitle: "Glowing border", target: nil, action: nil)
     private let strongerShadowCheckbox = NSButton(checkboxWithTitle: "Stronger shadow", target: nil, action: nil)
+    private let contrastCasingCheckbox = NSButton(checkboxWithTitle: "High-contrast casing", target: nil, action: nil)
     private let partyModeCheckbox = NSButton(checkboxWithTitle: "Party mode 🌈", target: nil, action: nil)
 
     // MARK: - Behavior tab controls
@@ -50,6 +51,14 @@ class PrefsWindowController: NSWindowController {
     private let focusTrailCheckbox = NSButton(checkboxWithTitle: "Focus trail — fade a ghost border on the window you left", target: nil, action: nil)
     private let showFocusChipCheckbox = NSButton(checkboxWithTitle: "Show a chip (app icon + name) on focus change", target: nil, action: nil)
     private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: "Launch Alan at login", target: nil, action: nil)
+    // Shown only while the system Reduce Motion setting is on. Alan honors it
+    // everywhere — the glide, the pulse, marching ants, the hand-drawn wobble,
+    // party mode's hue cycle, the trail and ping fades all degrade to something
+    // static — which, with every control still looking live, otherwise reads as
+    // "these checkboxes are broken".
+    private let reduceMotionNote = NSTextField(wrappingLabelWithString:
+        "System Reduce Motion is on, so movement, pulsing and animated border styles are simplified or skipped."
+    )
 
     // MARK: - Excluded-apps tab controls
 
@@ -96,6 +105,17 @@ class PrefsWindowController: NSWindowController {
             self,
             selector: #selector(defaultsChanged),
             name: FocusHighlighter.hotkeyRegistrationDidChange,
+            object: nil
+        )
+
+        // Reduce Motion and Increase Contrast both change what several settings
+        // actually do (the animation guards, and the forced-on contrast
+        // casing), so reflect a System Settings toggle without waiting for an
+        // unrelated defaults write to trigger a resync.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(defaultsChanged),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
             object: nil
         )
 
@@ -234,6 +254,7 @@ class PrefsWindowController: NSWindowController {
         setUp(useAccentColorCheckbox, action: #selector(useAccentColorChanged(_:)))
         setUp(glowingBorderCheckbox, action: #selector(glowingBorderChanged(_:)))
         setUp(strongerShadowCheckbox, action: #selector(strongerShadowChanged(_:)))
+        setUp(contrastCasingCheckbox, action: #selector(contrastCasingChanged(_:)))
         setUp(partyModeCheckbox, action: #selector(partyModeChanged(_:)))
 
         borderStylePopUp.translatesAutoresizingMaskIntoConstraints = false
@@ -253,6 +274,7 @@ class PrefsWindowController: NSWindowController {
             [empty, perAppColorsCheckbox, empty],
             [empty, glowingBorderCheckbox, empty],
             [empty, strongerShadowCheckbox, empty],
+            [empty, contrastCasingCheckbox, empty],
             [empty, partyModeCheckbox, empty]
         ])
         grid.translatesAutoresizingMaskIntoConstraints = false
@@ -346,34 +368,84 @@ class PrefsWindowController: NSWindowController {
         findAnimationPopUp.action = #selector(findAnimationChanged(_:))
         let findAnimationRow = indentedRow([makeLabel("Find shows:"), findAnimationPopUp])
 
-        let divider = NSBox()
-        divider.boxType = .separator
-
-        let stack = NSStackView(views: [
-            showWhileDraggingCheckbox,
-            hideWhenMaximizedCheckbox,
-            focusPulseCheckbox,
-            animateMovementCheckbox,
-            glideRow,
-            spotlightModeCheckbox,
-            dimRow,
-            findMyWindowCheckbox,
-            shortcutRow,
-            findAnimationRow,
-            shakeToFindCheckbox,
-            flashOnSpaceChangeCheckbox,
-            warpCursorOnFindCheckbox,
-            showInScreenshotsCheckbox,
-            focusTrailCheckbox,
-            showFocusChipCheckbox,
-            divider,
-            launchAtLoginCheckbox
+        reduceMotionNote.translatesAutoresizingMaskIntoConstraints = false
+        reduceMotionNote.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        reduceMotionNote.textColor = .secondaryLabelColor
+        // Measured into the window's height by buildUI, so its visibility has
+        // to be settled before that measurement rather than in the first
+        // syncDynamicUI — otherwise turning it on later would have nowhere to go.
+        reduceMotionNote.isHidden = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        NSLayoutConstraint.activate([
+            // A wrapping label has an enormous intrinsic width; pin it so it
+            // wraps inside the tab instead of widening the stack past it.
+            reduceMotionNote.widthAnchor.constraint(equalToConstant: 400)
         ])
+
+        // The tab has grown a row per feature for five rounds and had no
+        // structure left: eighteen unrelated switches in one flat list, where
+        // the only hierarchy was the indentation of the two sliders. Group them
+        // by what they're about, so a setting can be found by scanning five
+        // headers rather than reading eighteen labels.
+        let groups: [(title: String, rows: [NSView])] = [
+            ("Border", [
+                showWhileDraggingCheckbox,
+                hideWhenMaximizedCheckbox,
+                animateMovementCheckbox,
+                glideRow
+            ]),
+            ("On focus change", [
+                focusPulseCheckbox,
+                focusTrailCheckbox,
+                showFocusChipCheckbox
+            ]),
+            ("Spotlight", [
+                spotlightModeCheckbox,
+                dimRow
+            ]),
+            ("Find my window", [
+                findMyWindowCheckbox,
+                shortcutRow,
+                findAnimationRow,
+                shakeToFindCheckbox,
+                flashOnSpaceChangeCheckbox,
+                warpCursorOnFindCheckbox
+            ]),
+            ("General", [
+                showInScreenshotsCheckbox,
+                launchAtLoginCheckbox,
+                reduceMotionNote
+            ])
+        ]
+
+        var arranged: [NSView] = []
+        // The last row of each group but the last — the views a group gap goes
+        // after. Collected while building, since NSStackView's custom spacing
+        // is keyed on the *preceding* view.
+        var groupEnds: [NSView] = []
+        for group in groups {
+            if !arranged.isEmpty, let last = arranged.last {
+                groupEnds.append(last)
+            }
+            arranged.append(makeSectionHeader(group.title))
+            arranged.append(contentsOf: group.rows)
+        }
+
+        let stack = NSStackView(views: arranged)
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 12
+        // Tight inside a group, generous before the next header — which is what
+        // makes the grouping read as grouping. Roughly pays for the headers, so
+        // the tab (and therefore the window, which sizes to its tallest tab)
+        // barely grows.
+        stack.spacing = 6
         view.addSubview(stack)
+
+        // Air above every header but the first, which already has the stack's
+        // top inset.
+        for row in groupEnds {
+            stack.setCustomSpacing(18, after: row)
+        }
 
         // Requires the tab to be at least tall enough for its content — this
         // is what buildUI's fittingSize measurement reads when it sizes the
@@ -388,8 +460,7 @@ class PrefsWindowController: NSWindowController {
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -24),
-            stackBottom,
-            divider.widthAnchor.constraint(equalTo: stack.widthAnchor)
+            stackBottom
         ])
 
         return view
@@ -464,6 +535,16 @@ class PrefsWindowController: NSWindowController {
     private func makeLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }
+
+    // A small, quiet group heading — the same weight macOS uses for section
+    // labels in System Settings, so it reads as structure rather than content.
+    private func makeSectionHeader(_ text: String) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+        label.textColor = .secondaryLabelColor
         return label
     }
 
@@ -561,19 +642,55 @@ class PrefsWindowController: NSWindowController {
         showFocusChipCheckbox.state = defaults.bool(forKey: Key.showFocusChip) ? .on : .off
         perAppColorsCheckbox.state = defaults.bool(forKey: Key.perAppColors) ? .on : .off
         useAccentColorCheckbox.state = defaults.bool(forKey: Key.useAccentColor) ? .on : .off
-        // The light/dark wells become silent no-ops while the accent color is
-        // the source (accent outranks them), so grey them out — reversibly.
-        // Per-app colors still outrank accent, so that checkbox stays enabled.
+
+        // Four controls feed one value through a strict precedence chain —
+        // party ▸ per-app ▸ accent ▸ the light/dark wells (see
+        // HighlightView.currentBorderColor) — and the UI used to show exactly
+        // one link of it. With per-app colors on, the accent checkbox and both
+        // wells sat fully enabled while doing nothing at all. Grey out whatever
+        // has been taken over and name the setting that took it, the same way
+        // the pulse checkbox already explains itself under spotlight mode.
+        let partyOn = defaults.bool(forKey: Key.partyMode)
+        let perAppOn = defaults.bool(forKey: Key.perAppColors)
         let accentOn = defaults.bool(forKey: Key.useAccentColor)
-        lightModeColorWell.isEnabled = !accentOn
-        darkModeColorWell.isEnabled = !accentOn
+        let partyReason = "Party mode is choosing the border color."
+        let perAppReason = "Per-app border colors are choosing the border color."
+        let accentReason = "The system accent color is choosing the border color."
+
+        perAppColorsCheckbox.isEnabled = !partyOn
+        perAppColorsCheckbox.toolTip = partyOn ? partyReason : nil
+
+        useAccentColorCheckbox.isEnabled = !partyOn && !perAppOn
+        useAccentColorCheckbox.toolTip = partyOn ? partyReason : (perAppOn ? perAppReason : nil)
+
+        let wellsReason: String? = partyOn ? partyReason
+            : (perAppOn ? perAppReason : (accentOn ? accentReason : nil))
+        for well in [lightModeColorWell, darkModeColorWell] {
+            well.isEnabled = (wellsReason == nil)
+            well.toolTip = wellsReason
+        }
+
         if let styleIndex = BorderStyle.allCases.firstIndex(of: BorderStyle.current) {
             borderStylePopUp.selectItem(at: styleIndex)
         }
         glowingBorderCheckbox.state = defaults.bool(forKey: Key.glowingBorder) ? .on : .off
         strongerShadowCheckbox.state = defaults.bool(forKey: Key.strongerShadow) ? .on : .off
-        partyModeCheckbox.state = defaults.bool(forKey: Key.partyMode) ? .on : .off
+        partyModeCheckbox.state = partyOn ? .on : .off
         launchAtLoginCheckbox.state = launchAtLoginEnabled ? .on : .off
+
+        // The casing is forced on whenever the system Increase Contrast setting
+        // is (see HighlightView.contrastCasingActive), so show it as on and
+        // locked rather than as an off checkbox contradicting a visible casing.
+        // Only the displayed state is touched; the stored preference is left
+        // exactly as the user set it.
+        let increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        contrastCasingCheckbox.state = (increaseContrast || defaults.bool(forKey: Key.contrastCasing)) ? .on : .off
+        contrastCasingCheckbox.isEnabled = !increaseContrast
+        contrastCasingCheckbox.toolTip = increaseContrast
+            ? "The system Increase Contrast setting keeps this on."
+            : "Outline the border in the opposite tone, so it stays visible against content of a similar color."
+
+        reduceMotionNote.isHidden = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
         animateMovementCheckbox.state = defaults.bool(forKey: Key.animateMovement) ? .on : .off
         glideDurationSlider.isEnabled = defaults.bool(forKey: Key.animateMovement)
@@ -645,6 +762,10 @@ class PrefsWindowController: NSWindowController {
 
     @objc func strongerShadowChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Key.strongerShadow)
+    }
+
+    @objc func contrastCasingChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .on, forKey: Key.contrastCasing)
     }
 
     @objc func hideBorderWhenMaximizedChanged(_ sender: NSButton) {
