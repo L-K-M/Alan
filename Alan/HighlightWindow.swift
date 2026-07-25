@@ -664,11 +664,14 @@ class GhostBorderWindow: NSWindow {
     }
 
     // Reveal a static border at `frame` (window frame in global Cocoa
-    // coordinates), in `color` if given (the color the border wore on the
-    // window being left — see HighlightView.overrideColor), and fade it out
+    // coordinates), in `color` — the color the border wore on the window being
+    // left, see HighlightView.overrideColor. Non-optional on purpose: nil would
+    // fall through to resolving the color at draw time, which by then is the
+    // *incoming* app's, so the type keeps that mistake from compiling rather
+    // than leaving it to a guard at the one call site. Fades it out
     // over the trail duration, ordering out when done. Re-entrant: a new call
     // repositions and restarts.
-    func flash(at frame: CGRect, color: NSColor?, reduceMotion: Bool) {
+    func flash(at frame: CGRect, color: NSColor, reduceMotion: Bool) {
         generation += 1
         let gen = generation
         fadeTimer?.invalidate()
