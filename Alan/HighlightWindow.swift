@@ -188,6 +188,13 @@ class HighlightView: NSView {
     // Stroke width multiplier, animated by HighlightWindow.pulse().
     var pulseScale: CGFloat = 1
 
+    // When non-nil, the stroke uses this color instead of resolving the
+    // configured one at draw time. GhostBorderWindow needs it: the focus trail
+    // is drawn *after* focus has already moved, so currentBorderColor() would
+    // hand it the incoming app's per-app hue — the trail would say "you came
+    // from there" in the color of where you just went.
+    var overrideColor: NSColor?
+
     // Whether to draw the contrasting under-stroke: on when the user opts in
     // via Key.contrastCasing, or automatically whenever the system Increase
     // Contrast accessibility setting is on. Kept off at factory settings so the
@@ -214,7 +221,8 @@ class HighlightView: NSView {
         let margin = HighlightWindow.shadowMargin
         HighlightView.drawBorder(
             around: bounds.insetBy(dx: margin, dy: margin),
-            pulseScale: pulseScale
+            pulseScale: pulseScale,
+            color: overrideColor
         )
     }
 
@@ -247,7 +255,9 @@ class HighlightView: NSView {
 
     // Draws the configured border around a window's rect into the current
     // graphics context — shared by the overlay and the Preferences preview.
-    static func drawBorder(around windowRect: CGRect, pulseScale: CGFloat = 1) {
+    // `color` overrides the configured border color when non-nil (the focus
+    // trail, which has to wear the color of the window being left behind).
+    static func drawBorder(around windowRect: CGRect, pulseScale: CGFloat = 1, color overrideColor: NSColor? = nil) {
         var inset = UserDefaults.standard.integer(forKey: Key.inset)
         inset = max(1, min(20, inset))
 
@@ -291,7 +301,7 @@ class HighlightView: NSView {
             path.setLineDash(dash, count: dash.count, phase: phase)
         }
 
-        let color = currentBorderColor()
+        let color = overrideColor ?? currentBorderColor()
 
         // Draw stronger shadow if enabled (outer shadow only)
         if UserDefaults.standard.bool(forKey: Key.strongerShadow) {
@@ -580,16 +590,61 @@ extension NSWindow {
     func applyOverlaySharingType() {
         sharingType = UserDefaults.standard.bool(forKey: Key.showInScreenshots) ? .readOnly : .none
     }
+
+    // Fade this window out and order it out — the shared disappearance behind
+    // the focus chip and the focus trail. Returns the scheduled timer so the
+    // caller can invalidate it directly.
+    //
+    // Deliberately *not* `animator().alphaValue`. Assigning alphaValue does not
+    // cancel an animation already in flight: NSWindow's animator proxy keeps
+    // stepping toward its own target and overwrites the assignment on its next
+    // step. That is how a superseded fade used to drag its successor's alpha
+    // back to zero — and how the stale completion handler, correctly declining
+    // to order out a newer window, then stranded it on screen at alpha 0. With
+    // a timer, the caller's `isCurrent` generation check governs the animation
+    // itself rather than only its tail.
+    //
+    // The easing is smoothstep — an ease-in-ease-out curve close enough to
+    // NSAnimationContext's default (the bezier 0.42, 0, 0.58, 1.0) that
+    // replacing the animator doesn't change how a fade feels. They agree at
+    // both endpoints and the midpoint and differ only in steepness between,
+    // which is not perceptible over a fade this short. Alpha is left at 1 after ordering out, so the next reveal starts
+    // from a known opacity even if it interrupted a fade.
+    func fadeOutAndOrderOut(over duration: TimeInterval,
+                            while isCurrent: @escaping () -> Bool) -> Timer {
+        let start = Date()
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self, isCurrent() else {
+                timer.invalidate()
+                // Restore the known opacity on the cancelled path too, not just
+                // on natural completion: every caller today happens to reset it
+                // as well, but a helper whose contract promises a known alpha
+                // shouldn't rely on that.
+                self?.alphaValue = 1
+                return
+            }
+            let t = Date().timeIntervalSince(start) / duration
+            if t >= 1 {
+                timer.invalidate()
+                self.orderOut(nil)
+                self.alphaValue = 1
+            } else {
+                self.alphaValue = CGFloat(1 - t * t * (3 - 2 * t))
+            }
+        }
+        RunLoop.current.add(timer, forMode: .common)
+        return timer
+    }
 }
 
 // A one-shot fading copy of the border, left on the window focus just moved
 // away *from* — you see where your attention came from, not only where it went.
 // Same click-through, out-of-capture setup as HighlightWindow.
 class GhostBorderWindow: NSWindow {
-    // Bumped on each flash so a stale completion handler (from an earlier,
-    // superseded fade) doesn't order the window out mid-animation.
+    // Bumped on each flash so a superseded run's timer can't keep fading — or
+    // order out — a newer ghost.
     private var generation = 0
-    private var holdTimer: Timer?
+    private var fadeTimer: Timer?
 
     init() {
         super.init(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
@@ -600,21 +655,32 @@ class GhostBorderWindow: NSWindow {
         self.level = .statusBar
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         self.isReleasedWhenClosed = false
-        self.sharingType = .none
+        // The trail is a copy of the border, so it follows the border's
+        // capture-visibility switch rather than being pinned out of captures:
+        // opting into Key.showInScreenshots used to leave a border-shaped hole
+        // where the trail was.
+        applyOverlaySharingType()
         self.contentView = HighlightView(frame: .zero)
     }
 
     // Reveal a static border at `frame` (window frame in global Cocoa
-    // coordinates) and fade it out over the trail duration, ordering out when
-    // done. Re-entrant: a new call repositions and restarts.
-    func flash(at frame: CGRect, reduceMotion: Bool) {
+    // coordinates), in `color` — the color the border wore on the window being
+    // left, see HighlightView.overrideColor. Non-optional on purpose: nil would
+    // fall through to resolving the color at draw time, which by then is the
+    // *incoming* app's, so the type keeps that mistake from compiling rather
+    // than leaving it to a guard at the one call site. Fades it out
+    // over the trail duration, ordering out when done. Re-entrant: a new call
+    // repositions and restarts.
+    func flash(at frame: CGRect, color: NSColor, reduceMotion: Bool) {
         generation += 1
         let gen = generation
-        holdTimer?.invalidate()
-        holdTimer = nil
+        fadeTimer?.invalidate()
+        fadeTimer = nil
+        applyOverlaySharingType()
 
         let margin = HighlightWindow.shadowMargin
         setFrame(frame.insetBy(dx: -margin, dy: -margin), display: false)
+        (contentView as? HighlightView)?.overrideColor = color
         contentView?.needsDisplay = true
         alphaValue = 1
         orderFrontRegardless()
@@ -623,19 +689,29 @@ class GhostBorderWindow: NSWindow {
             // No fade under Reduce Motion — a brief static reveal, then gone.
             let timer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
                 guard let self, self.generation == gen else { return }
+                self.fadeTimer = nil
                 self.orderOut(nil)
+                // Nothing lowers alpha on this path today, but leaving it at a
+                // known 1 keeps every exit from this window consistent.
+                self.alphaValue = 1
             }
             RunLoop.current.add(timer, forMode: .common)
-            holdTimer = timer
+            fadeTimer = timer
             return
         }
 
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = Defaults.ghostTrailDuration
-            self.animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            guard let self, self.generation == gen else { return }
-            self.orderOut(nil)
-        })
+        fadeTimer = fadeOutAndOrderOut(over: Defaults.ghostTrailDuration) { [weak self] in
+            self?.generation == gen
+        }
+    }
+
+    // Order the trail out now (pause, exclude, a Space change), superseding any
+    // fade in flight so it can't linger over a screen the border has left.
+    func hide() {
+        generation += 1
+        fadeTimer?.invalidate()
+        fadeTimer = nil
+        orderOut(nil)
+        alphaValue = 1
     }
 }

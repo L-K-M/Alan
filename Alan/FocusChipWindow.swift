@@ -15,10 +15,11 @@ import AppKit
 // reused across focus changes.
 class FocusChipWindow: NSWindow {
 
-    // Bumped on each show so a superseded run's fade completion or hold timer
-    // can't order out — or fade — a newer chip.
+    // Bumped on each show so a superseded run's fade or hold timer can't order
+    // out — or keep fading — a newer chip.
     private var generation = 0
     private var holdTimer: Timer?
+    private var fadeTimer: Timer?
 
     private let iconView = NSImageView()
     private let label = NSTextField(labelWithString: "")
@@ -29,6 +30,8 @@ class FocusChipWindow: NSWindow {
     private static let gap: CGFloat = 8
     private static let maxTextWidth: CGFloat = 240
     private static let chipFont = NSFont.systemFont(ofSize: 13, weight: .medium)
+    // How long the chip takes to fade once its hold has elapsed.
+    private static let fadeDuration: TimeInterval = 0.25
 
     init() {
         super.init(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
@@ -40,9 +43,12 @@ class FocusChipWindow: NSWindow {
         self.level = .statusBar
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         self.isReleasedWhenClosed = false
-        // A focus chip is a personal cue, not something to broadcast to a
-        // meeting; keep it out of captures like the border's default.
-        self.sharingType = .none
+        // Out of screenshots, recordings and screen shares by default, like
+        // every other overlay — and, like them, following Key.showInScreenshots
+        // when the user has explicitly asked for overlays to be captured. It
+        // used to be pinned to .none, which meant turning that switch on left a
+        // chip-shaped gap in a recording of the very feature being recorded.
+        applyOverlaySharingType()
 
         let effect = NSVisualEffectView()
         effect.material = .hudWindow
@@ -73,6 +79,9 @@ class FocusChipWindow: NSWindow {
         let gen = generation
         holdTimer?.invalidate()
         holdTimer = nil
+        fadeTimer?.invalidate()
+        fadeTimer = nil
+        applyOverlaySharingType()
 
         let h = FocusChipWindow.height
         let iconSize = FocusChipWindow.iconSize
@@ -122,17 +131,23 @@ class FocusChipWindow: NSWindow {
         alphaValue = 1
         orderFrontRegardless()
 
-        holdTimer = Timer.scheduledTimer(withTimeInterval: Defaults.focusChipDuration, repeats: false) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: Defaults.focusChipDuration, repeats: false) { [weak self] _ in
             guard let self, self.generation == gen else { return }
-            NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.25
-                self.animator().alphaValue = 0
-            }, completionHandler: { [weak self] in
-                guard let self, self.generation == gen else { return }
-                self.orderOut(nil)
-            })
+            self.holdTimer = nil
+            self.startFade(generation: gen)
         }
-        RunLoop.current.add(holdTimer!, forMode: .common)
+        RunLoop.current.add(timer, forMode: .common)
+        holdTimer = timer
+    }
+
+    // Fade out over `fadeDuration`, then order out. The mechanics — why a
+    // timer rather than `animator().alphaValue`, and why the generation check
+    // has to govern the animation and not just its tail — live on the shared
+    // NSWindow.fadeOutAndOrderOut helper.
+    private func startFade(generation gen: Int) {
+        fadeTimer = fadeOutAndOrderOut(over: FocusChipWindow.fadeDuration) { [weak self] in
+            self?.generation == gen
+        }
     }
 
     // Order the chip out now (a hide/pause/Space-change), superseding any
@@ -141,7 +156,12 @@ class FocusChipWindow: NSWindow {
         generation += 1
         holdTimer?.invalidate()
         holdTimer = nil
+        fadeTimer?.invalidate()
+        fadeTimer = nil
         orderOut(nil)
+        // Leave the window at full opacity so the next show() starts clean even
+        // if it interrupted a fade.
+        alphaValue = 1
     }
 
     private func screenContaining(_ rect: CGRect) -> NSScreen? {

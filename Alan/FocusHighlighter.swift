@@ -93,6 +93,13 @@ class FocusHighlighter {
     private var spotlightAnimationTimer: Timer?
     private var displayedBorderFrame: CGRect?
     private var borderAnimationTimer: Timer?
+    // The color the border was last drawn with. Captured in showHighlight, and
+    // read by maybeShowFocusTrail — which runs *before* showHighlight, so what
+    // it reads is the color from the previous draw, i.e. the outgoing window's.
+    // Without it the trail resolves its color at draw time, after focus has
+    // already moved, and per-app colors paint the ghost in the incoming app's
+    // hue.
+    private var lastBorderColor: NSColor?
 
     private var workspaceObserver: NSObjectProtocol?
     private var defaultsObservation: DefaultsObservationBridge?
@@ -297,6 +304,9 @@ class FocusHighlighter {
         flashTimer?.invalidate()
         flashTimer = nil
         hideHighlight()
+        // A hard stand-down, unlike the transient hides hideHighlight also
+        // serves: nothing should be left fading on screen.
+        ghostBorderWindow.hide()
         lastFrame = nil
         lastFocusedWindow = nil
         NotificationCenter.default.post(name: Self.accessibilityTrustLost, object: self)
@@ -352,8 +362,14 @@ class FocusHighlighter {
         updateShakeMonitor()
 
         // Apply a screenshot-visibility toggle live to every overlay window.
+        // The transient ones (ping, trail, chip) also re-apply it when they are
+        // next shown, but a toggle made while one is on screen should take
+        // effect on it too.
         highlightWindow.applyOverlaySharingType()
         dimWindows.forEach { $0.applyOverlaySharingType() }
+        ghostBorderWindow.applyOverlaySharingType()
+        focusChipWindow.applyOverlaySharingType()
+        pingWindow.applyOverlaySharingType()
 
         // Re-evaluate from scratch rather than redrawing the remembered
         // frame, so settings that decide *whether* the border shows (hide
@@ -1022,7 +1038,18 @@ class FocusHighlighter {
         let spotlight = UserDefaults.standard.bool(forKey: Key.spotlightMode)
         guard let outgoing = spotlight ? displayedCutout : displayedBorderFrame,
               outgoing != newFrame else { return }
-        ghostBorderWindow.flash(at: outgoing, reduceMotion: Self.reduceMotion)
+        // lastBorderColor is still the color of the border being left behind:
+        // showHighlight captures it, and this runs before showHighlight does.
+        // It can't be nil here either — showHighlight sets it before setting
+        // highlightVisible, which the first guard requires — but that is a
+        // cross-function invariant, so guard rather than assume it. Skipping a
+        // trail is the right failure: passing nil would let the ghost resolve
+        // its color at draw time, which by then is the *incoming* app's, and
+        // silently reinstates the bug this whole path exists to fix.
+        guard let outgoingColor = lastBorderColor else { return }
+        ghostBorderWindow.flash(at: outgoing,
+                                color: outgoingColor,
+                                reduceMotion: Self.reduceMotion)
     }
 
     // On a focus change, briefly float a chip naming the app that just took
@@ -1051,6 +1078,12 @@ class FocusHighlighter {
     // In spotlight mode the border is replaced by per-screen dimming
     // windows with the focused window cut out; otherwise it's the border.
     private func showHighlight(at frame: CGRect) {
+        // Remember what this draw's border color is, so the *next* focus change
+        // can hand the outgoing color to the trail (see maybeShowFocusTrail).
+        // Captured in spotlight mode too — the trail is drawn as a border there
+        // as well, around the outgoing cut-out.
+        lastBorderColor = HighlightView.currentBorderColor()
+
         if UserDefaults.standard.bool(forKey: Key.spotlightMode) {
             highlightWindow.setPartyMode(false)
             highlightWindow.setBorderStyleAnimating(false)
@@ -1096,7 +1129,12 @@ class FocusHighlighter {
         highlightWindow.orderOut(nil)
         hideDimWindows()
         // A transient focus chip shouldn't outlive the border it accompanied
-        // (hide, pause, exclude, Space-change all route through here).
+        // (hide, pause, exclude, Space-change all route through here). The
+        // focus trail deliberately isn't cancelled here: app switches routinely
+        // pass through a transient "no focused window" refresh, and cutting the
+        // trail on one of those would clip the very animation the switch just
+        // started. It fades out on its own inside a second; only the hard
+        // stand-down in suspendForTrustLoss() cancels it outright.
         focusChipWindow.hide()
         highlightVisible = false
         spotlightAnimationTimer?.invalidate()
@@ -1249,10 +1287,16 @@ class FocusHighlighter {
         disableFrameTimer?.invalidate()
         // Nothing re-runs refresh() on its own once the window stops moving
         // (tracking is event-driven, not polled), so the timer has to do it.
-        disableFrameTimer = Timer.scheduledTimer(withTimeInterval: Defaults.frameDrawingDisableTimeout, repeats: false) { [weak self] _ in
+        // In .common mode like every other timer here: in the default mode
+        // alone, a main run loop sitting in a tracking mode when this should
+        // fire (an open menu, a modal panel) would strand the border hidden
+        // until that loop exits.
+        let timer = Timer.scheduledTimer(withTimeInterval: Defaults.frameDrawingDisableTimeout, repeats: false) { [weak self] _ in
             self?.drawFrame = true
             self?.refresh()
         }
+        RunLoop.current.add(timer, forMode: .common)
+        disableFrameTimer = timer
     }
 
     // A window counts as filling a screen when it covers that screen's
