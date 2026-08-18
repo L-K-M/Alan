@@ -51,6 +51,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Key.partyMode: false,
             Key.hideDock: false,
             Key.paused: false,
+            Key.autoCheckUpdates: false,
             Key.borderStyle: BorderStyle.solid.rawValue
         ])
 
@@ -92,6 +93,79 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // wondering whether anything happened.
         if permissionJustGranted {
             FocusHighlighter.shared.flashBorder()
+        }
+
+        startAutomaticUpdateChecks()
+    }
+
+    // MARK: - Automatic update checks
+
+    private var automaticUpdateTimer: Timer?
+
+    // Opt-in, weekly, and quiet. It matters more here than in most apps: an
+    // ad-hoc-signed update can reset the Accessibility grant, so the users most
+    // likely to be running a stale build are the ones who once saw Alan stop
+    // working and never found out why — and a background utility with its Dock
+    // icon hidden can otherwise run a year-old build indefinitely.
+    //
+    // The timer only *offers* a check; the weekly gate and the opt-in live in
+    // UpdateChecker.automaticCheckIfDue, so a sleeping or rarely-restarted Mac
+    // behaves the same as one rebooted daily.
+    private func startAutomaticUpdateChecks() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Defaults.updateCheckLaunchDelay) { [weak self] in
+            self?.runAutomaticUpdateCheck()
+        }
+
+        let timer = Timer.scheduledTimer(withTimeInterval: Defaults.updateCheckPollInterval, repeats: true) { [weak self] _ in
+            self?.runAutomaticUpdateCheck()
+        }
+        // Nothing here is time-critical; let the system coalesce the wake-up.
+        timer.tolerance = 30 * 60
+        RunLoop.current.add(timer, forMode: .common)
+        automaticUpdateTimer = timer
+    }
+
+    private func runAutomaticUpdateCheck() {
+        // Never start one behind a modal session — the permission alert can sit
+        // there for as long as it takes the user to find System Settings.
+        guard NSApp.modalWindow == nil else { return }
+        UpdateChecker.automaticCheckIfDue { [weak self] version, url in
+            self?.presentAutomaticUpdate(version: version, url: url)
+        }
+    }
+
+    private func presentAutomaticUpdate(version: String, url: URL) {
+        // A modal can have appeared while the request was out. Wait it out
+        // rather than nesting a second session inside it, or losing the news
+        // for a week — the check's timestamp is already recorded.
+        guard NSApp.modalWindow == nil else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
+                self?.presentAutomaticUpdate(version: version, url: url)
+            }
+            return
+        }
+
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.messageText = "Alan \(version) is available"
+        alert.informativeText = """
+        You’re running \(UpdateChecker.currentVersion()).
+
+        Alan’s releases are ad-hoc signed, so after replacing the app macOS may \
+        ask you to re-authorize it under Privacy & Security → Accessibility.
+        """
+        alert.addButton(withTitle: "Download…")
+        alert.addButton(withTitle: "Later")
+        alert.addButton(withTitle: "Skip This Version")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            NSWorkspace.shared.open(url)
+        case .alertThirdButtonReturn:
+            // Stop mentioning this particular version; a later one still gets
+            // announced, and the manual check ignores the skip entirely.
+            UserDefaults.standard.set(version, forKey: Key.skippedUpdateVersion)
+        default:
+            break
         }
     }
 

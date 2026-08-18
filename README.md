@@ -86,6 +86,13 @@ recent update likely reset it rather than showing the first-run text. Signing
 with a Developer ID and notarizing would remove this step entirely and is the
 long-term fix.
 
+**Check for Updates…** in the status menu asks GitHub for the latest release
+and always tells you the answer. Behavior ▸ **Check for updates
+automatically** (off by default) does the same once a week in the
+background, and stays quiet unless there is something newer — with a
+**Skip This Version** button if you'd rather not hear about a particular
+release again.
+
 ## Configuration
 
 Everything lives in the status-bar item (the little window icon):
