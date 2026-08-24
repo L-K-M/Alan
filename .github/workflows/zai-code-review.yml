@@ -13,6 +13,9 @@ permissions:
   pull-requests: write
   issues: write
 
+# One review per PR at a time; superseded reviews of an outdated diff are
+# worthless, so cancel them. Keyed on the PR number — for pull_request_target
+# github.ref is the base branch, which would collide across PRs.
 concurrency:
   group: zai-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -21,7 +24,7 @@ jobs:
   review:
     name: Review PR with GLM 5.3
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     # pull_request_target exposes repository secrets and a write-capable token.
     # Never run this privileged job for branches from untrusted forks.
     if: >-
@@ -33,6 +36,8 @@ jobs:
       - name: Z.ai Code Review
         if: ${{ env.ZAI_API_KEY != '' }}
         # Pin privileged third-party actions to an immutable commit.
+        # 7d0ce7b = v0.0.9. Verify before bumping:
+        #   git ls-remote https://github.com/L-K-M/zai-code-review refs/tags/v0.0.9
         uses: L-K-M/zai-code-review@7d0ce7b0c226c70eed194615130fa5b632ba4798
         with:
           ZAI_API_KEY: ${{ env.ZAI_API_KEY }}
