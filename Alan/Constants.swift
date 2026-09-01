@@ -40,6 +40,17 @@ struct Defaults {
     static let findPingDuration: TimeInterval = 0.55
     // How long the "who has focus" chip lingers before fading out.
     static let focusChipDuration: TimeInterval = 0.8
+    // How long an automatic update check waits between attempts. Weekly: often
+    // enough that a user on an ad-hoc-signed build isn't left a year behind,
+    // rare enough that it never feels like the app is phoning home.
+    static let updateCheckInterval: TimeInterval = 7 * 24 * 60 * 60
+    // How often the app *offers* a check. The weekly gate above decides whether
+    // one actually runs, so this only bounds how soon a due check is noticed on
+    // a machine that stays awake.
+    static let updateCheckPollInterval: TimeInterval = 6 * 60 * 60
+    // Time after launch before the first automatic check, so a request can't
+    // land on top of the Accessibility permission flow.
+    static let updateCheckLaunchDelay: TimeInterval = 60
     // kVK_ANSI_F with controlKey | optionKey | cmdKey — spelled as numbers
     // so Constants doesn't need Carbon.
     static let findMyWindowDefaultKeyCode = 0x03
@@ -86,6 +97,14 @@ struct Key {
     // until the next flash/ping, so it's absent from allObservedKeys below.
     static let findAnimation = "findAnimation"
     static let showFocusChip = "showFocusChip"
+    // Opt-in weekly update check. Read live when a check is due, so there is
+    // nothing to apply on toggle — absent from allObservedKeys below.
+    static let autoCheckUpdates = "autoCheckUpdates"
+    // Internal state for that check, not user settings: when the last attempt
+    // ran (seconds since the reference date) and a version the user chose to
+    // stop being told about.
+    static let lastUpdateCheck = "lastUpdateCheck"
+    static let skippedUpdateVersion = "skippedUpdateVersion"
     // Sticky flag: set true once Accessibility has ever been granted, so a
     // later launch where trust has vanished can tell a first run from an update
     // that reset the grant. Internal state, not a user setting — not observed.
