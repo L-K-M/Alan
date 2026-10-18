@@ -106,6 +106,15 @@ struct Key {
         flashOnSpaceChange, paused, borderStyle, useAccentColor, showInScreenshots,
         contrastCasing, focusTrail, showFocusChip
     ]
+
+    // Every key Alan stores as a *setting* — what "Restore Defaults" clears,
+    // so that the values registered at launch take over again. Deliberately
+    // omits hadAccessibilityGrant: that isn't a setting but a record of whether
+    // the Accessibility grant has ever been held, and forgetting it would make
+    // a returning user's re-grant read as a first run.
+    static let allStoredKeys: [String] = allObservedKeys + [
+        hideDock, warpCursorOnFind, findAnimation, findMyWindowShortcutLabel
+    ]
 }
 
 // The border's line style. Raw values are the stored defaults strings.
