@@ -11,8 +11,8 @@ import Foundation
 // Releases API. Sparkle needs a stable Developer ID the ad-hoc release pipeline
 // doesn't have, so this is a plain background URLSession GET, decoded by hand,
 // failing silently on any error. Drives the manual "Check for Updates…" status
-// menu item (which gives explicit up-to-date feedback); an automatic periodic
-// check could be layered on later behind an opt-in preference.
+// menu item (which gives explicit up-to-date feedback) and the opt-in weekly
+// automatic check below (silent unless there is genuinely something new).
 enum UpdateChecker {
 
     static let releasesAPI = URL(string: "https://api.github.com/repos/L-K-M/Alan/releases/latest")!
@@ -35,6 +35,38 @@ enum UpdateChecker {
             DispatchQueue.main.async { completion(outcome) }
         }
         task.resume()
+    }
+
+    // MARK: - Automatic checks
+
+    // Run a check if the user opted in and enough time has passed, then report
+    // *only* an update worth announcing.
+    //
+    // The asymmetry with the manual check is deliberate. There, explicit
+    // feedback is the whole point — "you're up to date" is the answer the user
+    // asked for. Here nobody asked, so "up to date" and "couldn't reach GitHub"
+    // are both correctly silent; the only thing that earns an interruption is a
+    // newer version the user hasn't already chosen to skip.
+    //
+    // The timestamp is recorded before the request, whichever way it goes, so a
+    // machine that is offline for a week doesn't re-attempt on every poll.
+    static func automaticCheckIfDue(completion: @escaping (_ version: String, _ url: URL) -> Void) {
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: Key.autoCheckUpdates) else { return }
+
+        let last = defaults.double(forKey: Key.lastUpdateCheck)
+        let now = Date().timeIntervalSinceReferenceDate
+        // `last > now` means a clock that moved backwards (or a hand-edited
+        // plist) parked the stamp in the future; treat that as due rather than
+        // suppressing every check until the clock catches up.
+        if last > 0, last <= now, now - last < Defaults.updateCheckInterval { return }
+        defaults.set(now, forKey: Key.lastUpdateCheck)
+
+        check { outcome in
+            guard case .updateAvailable(let version, let url) = outcome else { return }
+            guard version != defaults.string(forKey: Key.skippedUpdateVersion) else { return }
+            completion(version, url)
+        }
     }
 
     private static func parse(data: Data?, response: URLResponse?) -> Outcome {
