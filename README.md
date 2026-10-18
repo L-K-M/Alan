@@ -24,8 +24,10 @@ that, this fork adds:
 - Border styling: width, inset, corner radius, light/dark colors, and a
   style picker — solid, dashed, marching ants, or an xkcd-style
   hand-drawn wobble.
-- An optional stronger drop shadow behind the active window, and an
-  optional glow on the border itself.
+- An optional stronger drop shadow behind the active window, an optional
+  glow on the border itself, and a high-contrast casing that outlines the
+  border in the opposite tone so it stays visible against content of a
+  similar color (on automatically when macOS's Increase Contrast is on).
 - Optional per-app border colors, with each app's hue derived from its
   bundle identifier — you learn the colors within a day.
 - Spotlight mode, the inverse-Alan: instead of a border, everything
@@ -33,9 +35,10 @@ that, this fork adds:
 - A "find my window" hotkey (⌃⌥⌘F by default, recordable) that flashes
   the border, and an optional shake-the-mouse gesture that does the
   same.
-- An always-available status menu: pause/resume Alan, exclude the
-  frontmost app in one click, open Settings, and hide or show the Dock
-  icon — live, no relaunch.
+- An always-available status menu: pause/resume Alan (the icon dims while
+  paused), toggle spotlight mode, find your window, exclude or re-include
+  the frontmost app in one click, open Settings, restore defaults, and
+  hide or show the Dock icon — live, no relaunch.
 - An excluded-apps list, for apps that should never get a border.
 - Behavior settings: hide the border while dragging, hide it when a
   window fills its screen, pulse on focus change, and an eased glide
@@ -95,10 +98,12 @@ release again.
 
 ## Configuration
 
-Everything lives in the status-bar item (the little window icon):
-**Settings…** opens the three-tab settings window (Appearance, Behavior,
-Excluded Apps), and the menu also has **Pause Alan**, **Exclude
-“<frontmost app>”**, and a live **Hide Dock Icon** toggle.
+Everything lives in the status-bar item (the little window icon), which
+dims while Alan is paused. **Settings…** opens the three-tab settings
+window (Appearance, Behavior, Excluded Apps); the menu also has **Pause
+Alan**, a **Spotlight Mode** toggle, **Find My Window**, a one-click
+**Exclude/Include “<frontmost app>”**, a live **Hide Dock Icon** toggle,
+and **Restore Defaults…**.
 
 ### Scripting
 
@@ -111,7 +116,8 @@ defaults write studio.retina.Alan paused -bool true        # pause Alan
 defaults write studio.retina.Alan paused -bool false       # resume
 defaults write studio.retina.Alan borderStyle handDrawn    # solid | dashed | ants | handDrawn
 defaults write studio.retina.Alan spotlightMode -bool true
-defaults write studio.retina.Alan hideDock -bool true      # applies on relaunch when set externally
+defaults write studio.retina.Alan contrastCasing -bool true # high-contrast casing
+defaults write studio.retina.Alan hideDock -bool true      # show/hide the Dock icon
 ```
 
 External changes are picked up automatically on the next refresh.
